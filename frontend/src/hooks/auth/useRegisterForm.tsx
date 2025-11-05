@@ -4,6 +4,7 @@ import { InputState, RegisterState } from "@/types/auth";
 import { loginService } from "@/services/auth/login";
 import { useRouter } from 'next/navigation';
 import axios from "axios";
+import { registerService } from "@/services/auth/register";
 
 export default function useRegisterForm() {
   const router = useRouter();
@@ -26,8 +27,11 @@ export default function useRegisterForm() {
     e.preventDefault();
     try {
       const { username, password, company, email, rnc } = handleInputs;
-      console.log(username, password, company, email, rnc);
-      
+      const response = await registerService(username, password, email, rnc, company)
+      setsuccessMessage("✅ Registro completado con éxito");
+      setTimeout(() => {
+        router.push('/');
+      }, 3000);
       
     } catch (error: any) {
       if (axios.isAxiosError(error)) {

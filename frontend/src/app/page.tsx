@@ -14,7 +14,7 @@ export default function Home() {
       <div className={clsx(
         "fixed lg:fixed inset-0 z-30 bg-[#6C9BF5] transition-[clip-path] duration-700 ease-out",
         !isRegistering && "[clip-path:circle(6rem_at_100%_10%)]",
-        isRegistering && "[clip-path:circle(150%_at_100%_10%)]"
+        isRegistering && "[clip-path:circle(150%_at_100%_10%)] bg-gradient-to-br from-[#89acf1] via-[#64a7ff] to-[#0adbf7]"
       )}>
       </div>
       {/* Visible ball animation on the top right corner  */}

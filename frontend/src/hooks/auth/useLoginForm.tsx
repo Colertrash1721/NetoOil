@@ -23,18 +23,21 @@ export default function useLoginForm() {
     e.preventDefault();
     try {
       const { username, password } = handleInputs;
+      console.log(username, password);
+      
       const loginResponse = await loginService(username, password);
       console.log(loginResponse);
       localStorage.setItem("username", loginResponse.user.username);
-      localStorage.setItem("token", loginResponse.token);
       localStorage.setItem("rol", loginResponse.user.role);
+      localStorage.setItem("token", loginResponse.token);
       setsuccessMessage("✅ Autenticación completa");
+      
       setTimeout(() => {
         if (loginResponse.user.role === 'admin') {
-          router.push('/dashboard');
+          router.push('/admin');
         }
         else{
-          router.push('/container');
+          router.push('/client');
         }
       }, 3000);
       

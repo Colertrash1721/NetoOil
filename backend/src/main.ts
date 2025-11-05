@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -11,7 +12,7 @@ async function bootstrap() {
   });
   const PORT = process.env.PORT ?? 3000;
   const HOST = process.env.HOST ?? '0.0.0.0'; // usar 0.0.0.0 para que escuche en todas las interfaces
-
+  app.use(cookieParser())
   await app.listen(PORT, HOST);
   console.log(`🚀 Backend corriendo en http://${HOST}:${PORT}/api`);
 }

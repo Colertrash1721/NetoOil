@@ -1,10 +1,10 @@
 import axios from "axios";
 
-export const loginService = async (email: string, password: string) => {
+export const loginService = async (user: string, password: string) => {
   const response = await axios.post(
     `${process.env.NEXT_PUBLIC_MY_BACKEND_API}/auth/login`,
     {
-      email,
+      user,
       password,
     },
     {

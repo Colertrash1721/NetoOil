@@ -73,30 +73,34 @@ export default function RegisterForm() {
         initial={{ opacity: 0, scale: 0 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 2, scale: { type: "spring", visualDuration: 0.4, bounce: 0.5 } }}
-        className="absolute flex flex-col-reverse md:grid z-[100] text-white font-bold text-3xl bg-white w-full h-full md:w-3/4 md:h-3/4  md:rounded-2xl shadow-lg lg:grid-cols-[60%_40%] md:grid-cols-2 justify-between"
+        className="absolute flex flex-col-reverse md:grid z-[100] text-white font-bold text-3xl w-full h-full md:w-3/4 md:h-3/4  md:rounded-2xl lg:grid-cols-[30%_60%] md:grid-cols-2 justify-between"
       >
-        <section className='relative flex flex-col items-center justify-center gap-8 h-[30%] md:h-full'>
-          <div className="absolute z-[-1] bg-[#9EBFFF] flex items-center justify-center h-full w-full overflow-hidden [clip-path:circle(85%_at_40%_170%)] md:[clip-path:circle(85%_at_0%_50%)] rounded-l-2xl" />
+        <section className='relative flex flex-col items-center justify-center gap-8 h-[30%] md:h-full '>
 
-          {/* Texto tipeado */}
-          <h1 className='text-3xl text-black md:text-white font-extrabold min-h-[2.5rem]'>
-            {display}<span className='animate-pulse'>|</span>
-          </h1>
+          <div className="absolute z-[1] flex flex-col items-start justify-between py-30 right-[-50%] gap-15 h-full w-full overflow-hidden  rounded-l-2xl">
+            {/* Texto tipeado */}
+            <div className='flex flex-col gap-6'>
+              <h1 className='text-3xl text-black md:text-white font-extrabold min-h-[2.5rem]'>
+                {display}<span className='animate-pulse'>|</span>
+              </h1>
 
-          <p className='text-black md:text-white text-lg font-light'>Si ya tienes una cuenta clickea aquí para ingresar</p>
-          <button
-            className='group rounded-full relative border p-2 px-4 text-2xl overflow-hidden font-medium tracking-[2px] cursor-pointer transition-all after:absolute after:content-[""] after:w-full after:h-full after:bg-[#49CDD0] after:top-0 after:left-[-100%] after:z-[-1] hover:after:left-0 hover:border-0 after:transition-[left] after:duration-300'
-            onClick={() => setisRegistering && setisRegistering(false)}
-          >
-            <span>Click aquí</span>
-          </button>
+              <p className='text-black md:text-white text-lg font-light'>Si ya tienes una cuenta clickea aquí para ingresar</p>
+              <button
+                className='group rounded-full relative p-2 px-4 text-2xl overflow-hidden font-medium tracking-[2px] cursor-pointer transition-all after:absolute after:content-[""] after:w-full after:h-full after:bg-[#49CDD0] after:top-0 after:left-[-100%] after:z-[-1] hover:after:left-0 hover:border-0 after:transition-[left] after:duration-300 lg:w-1/2 md:w-1/2 shadow-lg bg-blue-600 w-auto'
+                onClick={() => setisRegistering && setisRegistering(false)}
+              >
+                <span>Click aquí</span>
+              </button>
+            </div>
 
-          <Image className='absolute bottom-0 right-0 z-[-1]' src="/assets/raw.png" alt='' width={450} height={450} />
+            <Image className='bottom-0 right-0 z-[-1]' src="/assets/imagen.png" alt='' width={650} height={650} />
+          </div>
+
         </section>
 
-        <section className='flex flex-col items-center justify-center gap-3 mt-10 md:mt-0'>
+        <section className='flex flex-col items-center justify-center gap-3 mt-10 md:mt-0 bg-[#ffffff27] rounded-2xl shadow-lg backdrop-blur-sm border border-white/22 h-full'>
           <h1 className='text-4xl text-black font-extrabold'>Sign Up</h1>
-          <form className='w-full text-xl text-black font-light flex flex-col items-center justify-center gap-4' onSubmit={handleSubmit}>
+          <form className='w-3/4 text-xl text-black font-light flex flex-col items-end justify-center gap-4' onSubmit={handleSubmit}>
             <Inputs type='text' label="Username" icon='bx-user' rounded onChange={handleChange} value={handleInputs.username} />
             <Inputs type='text' label="Email" icon='bxl-gmail' rounded onChange={handleChange} value={handleInputs.email} />
             <Inputs type='password' label="Password" icon='bx-lock-alt' rounded onChange={handleChange} value={handleInputs.password} />
