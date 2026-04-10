@@ -5,10 +5,11 @@ type props = {
     className: string;
     title: string;
     options?: string[];
+    optionsClassname?: string;
     returnSelectedOption: (option: string) => void;
 }
 
-export default function DropDown({ className, title, options, returnSelectedOption}: props) {
+export default function DropDown({ className, title, options, returnSelectedOption, optionsClassname}: props) {
     const [isOpen, setisOpen] = useState<boolean>(false);
     const [selectedOption, setselectedOption] = useState<string | null>(null);
 
@@ -25,7 +26,7 @@ export default function DropDown({ className, title, options, returnSelectedOpti
         <div className={className} onClick={toggleOpen}>
             {selectedOption ? selectedOption : title} <i className={isOpen ? 'bx bx-chevron-up' : 'bx bx-chevron-down'}></i>
         {isOpen && (
-            <div className="absolute mt-2 w-full bg-white border-gray-300 rounded shadow-lg z-10 top-full left-0 transition-all border-0 overflow-hidden">
+            <div className={`${optionsClassname ? optionsClassname : 'absolute mt-2 w-full bg-white border-gray-300 rounded shadow-lg z-10 top-full left-0 transition-all border-0 overflow-hidden'}`}>
                 {options?.map((option, index) => (
                     <div 
                         key={index} 

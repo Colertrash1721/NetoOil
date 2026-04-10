@@ -42,8 +42,8 @@ export default function Page() {
   return (
     <>
       {/* Header cards */}
-      <div className="flex gap-6 h-[40%] justify-between">
-        <Card className="bg-white h-full w-[30%] p-6 rounded-lg shadow-md flex justify-center items-center flex-col">
+      <div className="flex flex-col md:flex-row lg:flex-row gap-6 h-full md:h-[40%] lg:h-[40%] justify-between">
+        <Card className="bg-white h-[20vh] w-full md:w-[30%] lg:w-[30%] p-6 rounded-lg shadow-md flex justify-center items-center flex-col">
           <h1 className="text-xl font-bold mb-2">Usuarios activos</h1>
           <div className="flex flex-row">
             <i className={`bx bx-user text-4xl`}></i>
@@ -51,7 +51,7 @@ export default function Page() {
           </div>
         </Card>
 
-        <Card className="flex justify-center items-center flex-col bg-white h-full w-[30%] p-6 rounded-lg shadow-md">
+        <Card className="flex justify-center items-center flex-col bg-white h-[20vh] w-full md:w-[30%] lg:w-[30%] p-6 rounded-lg shadow-md">
           <h1 className="text-xl font-bold mb-2">Total de usuarios</h1>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -77,7 +77,7 @@ export default function Page() {
       </div>
 
       {/* Chart */}
-      <Card className="bg-white p-6 rounded-lg shadow-md h-full">
+      <Card className="bg-white p-6 rounded-lg shadow-md h-[50vh] md:full lg:full">
         <h1 className="text-xl font-bold mb-4">
           Gráfica de visualización de aumento de clientes
         </h1>

@@ -1,19 +1,11 @@
-import axios from "axios";
+import { apiClient } from '@/services/api/client';
+import { LoginResponse } from '@/types/auth';
 
 export const loginService = async (user: string, password: string) => {
-  const response = await axios.post(
-    `${process.env.NEXT_PUBLIC_MY_BACKEND_API}/auth/login`,
-    {
-      user,
-      password,
-    },
-    {
-      headers: {
-        "Content-Type": "application/json",
-      },
-      withCredentials: true
-    }
-  );
-  console.log(response);
-  return response.data;  
+  const response = await apiClient.post<LoginResponse>('/auth/login', {
+    user,
+    password,
+  });
+
+  return response.data;
 };

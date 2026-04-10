@@ -3,12 +3,62 @@
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import KpiCard from '@/components/ui/KpiCard';
-import DropDown from '@/components/ui/dropDown';
-import { useEffect, useState } from 'react';
-import Buses from '@/components/ui/buses';
+import { useEffect, useMemo, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Bus, BusItem } from '@/types/buses';
-import { formatTime, prepareChartData } from '@/lib/utils';
+import { BusItem } from '@/types/buses';
+import { prepareChartData } from '@/lib/utils';
+import { getVehicleDetailService, getVehiclesService, VehicleDetailApi } from '@/services/vehicles/service';
+
+function mapStatus(status?: string | null): BusItem['status'] {
+  const value = (status || '').toLowerCase();
+  if (value.includes('alert') || value.includes('alarm')) {
+    return 'Alerta';
+  }
+  if (value.includes('terminal') || value.includes('idle') || value.includes('inactive')) {
+    return 'En terminal';
+  }
+  return 'En ruta';
+}
+
+function mapVehicle(detail: VehicleDetailApi): BusItem {
+  const points = detail.telemetryHistory.length > 0
+    ? [...detail.telemetryHistory].reverse().map((item) => ({
+        number: item.fuelLevel ?? 0,
+        timestamp: item.recordedAt,
+      }))
+    : [{
+        number: detail.lastFuelLevel ?? 0,
+        timestamp: detail.lastUpdate ?? detail.creationDate,
+      }];
+
+  return {
+    id: detail.id,
+    name: `${detail.brand} ${detail.model}`.trim() || `Unidad ${detail.plate}`,
+    engine: `${detail.brand} ${detail.model}`.trim() || 'Sin motor registrado',
+    plate: detail.plate,
+    route: detail.assignedCompanyName ?? 'Sin ruta registrada',
+    driver: 'Sin chofer registrado',
+    status: mapStatus(detail.status),
+    location: {
+      lat: detail.lastLatitude ?? 18.4861,
+      lng: detail.lastLongitude ?? -69.9312,
+      label: detail.assignedCompanyName ?? 'Sin ubicacion registrada',
+    },
+    DieselLevel: points,
+    EstimatedLevel: points.map((item) => ({ ...item })),
+    telemetry: {
+      temperature: detail.lastTemperature ?? 0,
+      inclination: detail.lastInclination ?? 0,
+      volume: detail.lastVolume ?? 0,
+      battery: detail.lastBatteryLevel ?? 0,
+      pressure: detail.lastPressure ?? 0,
+      humidity: detail.lastHumidity ?? 0,
+      speed: detail.lastSpeed ?? 0,
+      updatedAt: detail.lastUpdate ?? detail.creationDate,
+    },
+    events: [],
+  };
+}
 
 const data = [
   { name: 'January', uv: 4000 },
@@ -25,271 +75,155 @@ const data = [
   { name: 'December', uv: 10000 },
 ];
 
-const busesData: Bus = [
-  {
-    id: 101,
-    name: "Ruta 27 - Centro",
-    engine: "Mercedes-Benz OH-1621",
-    plate: "ABC-123",
-    DieselLevel: [
-      { number: 85.5, timestamp: "2024-01-15T08:00:00Z" },
-      { number: 75.5, timestamp: "2024-01-15T09:00:00Z" },
-      { number: 65.2, timestamp: "2024-01-15T10:00:00Z" },
-      { number: 55.8, timestamp: "2024-01-15T11:00:00Z" }
-    ],
-    EstimatedLevel: [
-      { number: 87.1, timestamp: "2024-01-15T08:00:00Z" },
-      { number: 78.2, timestamp: "2024-01-15T09:00:00Z" },
-      { number: 68.9, timestamp: "2024-01-15T10:00:00Z" },
-      { number: 59.3, timestamp: "2024-01-15T11:00:00Z" }
-    ]
-  },
-  {
-    id: 102,
-    name: "Expreso Norte",
-    engine: "Volvo B8R",
-    plate: "XYZ-789",
-    DieselLevel: [
-      { number: 95.0, timestamp: "2024-01-15T06:30:00Z" },
-      { number: 82.3, timestamp: "2024-01-15T08:15:00Z" },
-      { number: 70.1, timestamp: "2024-01-15T10:00:00Z" },
-      { number: 58.7, timestamp: "2024-01-15T12:00:00Z" },
-      { number: 45.0, timestamp: "2024-01-15T14:00:00Z" }
-    ],
-    EstimatedLevel: [
-      { number: 96.5, timestamp: "2024-01-15T06:30:00Z" },
-      { number: 85.2, timestamp: "2024-01-15T08:15:00Z" },
-      { number: 73.8, timestamp: "2024-01-15T10:00:00Z" },
-      { number: 62.1, timestamp: "2024-01-15T12:00:00Z" },
-      { number: 50.4, timestamp: "2024-01-15T14:00:00Z" }
-    ]
-  },
-  {
-    id: 103,
-    name: "Circular Sur",
-    engine: "Scania K280",
-    plate: "DEF-456",
-    DieselLevel: [
-      { number: 90.0, timestamp: "2024-01-13T08:00:00Z" },
-      { number: 45.5, timestamp: "2024-01-13T16:00:00Z" },
-      { number: 88.2, timestamp: "2024-01-14T08:00:00Z" },
-      { number: 42.8, timestamp: "2024-01-14T16:00:00Z" },
-      { number: 86.7, timestamp: "2024-01-15T08:00:00Z" },
-      { number: 40.1, timestamp: "2024-01-15T16:00:00Z" }
-    ],
-    EstimatedLevel: [
-      { number: 92.1, timestamp: "2024-01-13T08:00:00Z" },
-      { number: 48.3, timestamp: "2024-01-13T16:00:00Z" },
-      { number: 90.5, timestamp: "2024-01-14T08:00:00Z" },
-      { number: 46.2, timestamp: "2024-01-14T16:00:00Z" },
-      { number: 89.8, timestamp: "2024-01-15T08:00:00Z" },
-      { number: 44.7, timestamp: "2024-01-15T16:00:00Z" }
-    ]
-  },
-  {
-    id: 104,
-    name: "MetroBus Línea 5",
-    engine: "Marcopolo Torino 2023",
-    plate: "GHI-789",
-    DieselLevel: [
-      { number: 100.0, timestamp: "2024-01-15T06:00:00Z" },
-      { number: 85.3, timestamp: "2024-01-15T08:00:00Z" },
-      { number: 70.1, timestamp: "2024-01-15T10:00:00Z" },
-      { number: 55.8, timestamp: "2024-01-15T12:00:00Z" },
-      { number: 40.2, timestamp: "2024-01-15T14:00:00Z" }
-    ],
-    EstimatedLevel: [
-      { number: 100.0, timestamp: "2024-01-15T06:00:00Z" },
-      { number: 87.5, timestamp: "2024-01-15T08:00:00Z" },
-      { number: 72.9, timestamp: "2024-01-15T10:00:00Z" },
-      { number: 58.3, timestamp: "2024-01-15T12:00:00Z" },
-      { number: 43.7, timestamp: "2024-01-15T14:00:00Z" },
-      { number: 29.1, timestamp: "2024-01-15T16:00:00Z" },
-      { number: 14.5, timestamp: "2024-01-15T18:00:00Z" }
-    ]
-  },
-  {
-    id: 105,
-    name: "Escolar Zona Este",
-    engine: "Toyota Coaster",
-    plate: "JKL-012",
-    DieselLevel: [
-      { number: 65.0, timestamp: "2024-01-15T13:00:00Z" }
-    ],
-    EstimatedLevel: [
-      { number: 67.2, timestamp: "2024-01-15T13:00:00Z" },
-      { number: 59.8, timestamp: "2024-01-15T15:00:00Z" },
-      { number: 52.4, timestamp: "2024-01-15T17:00:00Z" }
-    ]
-  },
-  {
-    id: 106,
-    name: "Aeropuerto Express",
-    engine: "Mercedes-Benz O500U",
-    plate: "MNO-345",
-    DieselLevel: [
-      { number: 78.9, timestamp: "2024-01-15T07:00:00Z" },
-      { number: 65.4, timestamp: "2024-01-15T09:30:00Z" },
-      { number: 51.2, timestamp: "2024-01-15T12:00:00Z" },
-      { number: 38.7, timestamp: "2024-01-15T14:30:00Z" }
-    ],
-    EstimatedLevel: [
-      { number: 80.5, timestamp: "2024-01-15T07:00:00Z" },
-      { number: 68.1, timestamp: "2024-01-15T09:30:00Z" },
-      { number: 54.8, timestamp: "2024-01-15T12:00:00Z" },
-      { number: 41.3, timestamp: "2024-01-15T14:30:00Z" },
-      { number: 27.9, timestamp: "2024-01-15T17:00:00Z" }
-    ]
-  }
-];
-
-const options = ['Compañía A', 'Compañía B', 'Compañía C'];
-
-
 export default function AnalyticsPage() {
   const year = new Date().getFullYear();
   const month = (new Date().getMonth() + 1).toString().padStart(2, '0');
   const day = new Date().getDate().toString().padStart(2, '0');
   const [selectedDate, setSelectedDate] = useState(year + '-' + month + '-' + day);
-  const [selectCompany, setSelectCompany] = useState(options[0]);
-  const [selectedBusId, setSelectedBusId] = useState<number>(busesData[0].id);
-  const [busSelected, setbusSelected] = useState<BusItem>(busesData[0]);
+  const [buses, setBuses] = useState<BusItem[]>([]);
+  const [selectedBusId, setSelectedBusId] = useState<number | null>(null);
+  const [busSelected, setBusSelected] = useState<BusItem | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const vehicles = await getVehiclesService();
+        const details = await Promise.all(
+          vehicles.map((vehicle) => getVehicleDetailService(vehicle.id).catch(() => null)),
+        );
+        const mapped = details
+          .filter((detail): detail is VehicleDetailApi => detail !== null)
+          .map((detail) => mapVehicle(detail));
+        setBuses(mapped);
+        setSelectedBusId(mapped[0]?.id ?? null);
+        setBusSelected(mapped[0] ?? null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+  }, []);
 
   const selectedBus = (busId: number) => {
     setSelectedBusId(busId);
-    const bus = busesData.find((b) => b.id === busId);
+    const bus = buses.find((item) => item.id === busId);
     if (bus) {
-      setbusSelected(bus);
+      setBusSelected(bus);
     }
-  }
-
-  const returnSelectedCompany = (option: string) => {
-    setSelectCompany(option);
-  }
+  };
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSelectedDate(e.target.value);
+  };
+
+  const chartData = useMemo(() => {
+    if (!busSelected) {
+      return [];
+    }
+    return prepareChartData(busSelected);
+  }, [busSelected]);
+
+  const totalConsumption = useMemo(() => {
+    return buses.reduce((sum, bus) => {
+      const first = bus.DieselLevel[0]?.number ?? 0;
+      const last = bus.DieselLevel[bus.DieselLevel.length - 1]?.number ?? 0;
+      return sum + Math.max(0, first - last);
+    }, 0);
+  }, [buses]);
+
+  const avgSpeed = useMemo(() => {
+    if (buses.length === 0) {
+      return 0;
+    }
+    return buses.reduce((sum, bus) => sum + bus.telemetry.speed, 0) / buses.length;
+  }, [buses]);
+
+  const alertCount = useMemo(() => {
+    return buses.filter((bus) => bus.status === 'Alerta').length;
+  }, [buses]);
+
+  if (loading) {
+    return <div className="rounded-xl bg-white p-6 shadow">Cargando datos...</div>;
   }
 
-  const chartData = prepareChartData(busSelected);
+  if (!busSelected) {
+    return <div className="rounded-xl bg-white p-6 shadow">No hay vehículos registrados.</div>;
+  }
 
   return (
     <div className="grid grid-rows-3 gap-4 min-h-[600px] h-full w-full">
       <div className="flex flex-col gap-4 w-full h-fit">
-        <div className="flex items-center justify-between">
-          <DropDown className="flex w-1/4 bg-white p-2
-          rounded tracking-widest text-gray-500 justify-between items-center cursor-pointer relative" title="Seleccionar compañía" options={options} returnSelectedOption={returnSelectedCompany} />
-          <div className="w-1/2 flex justify-end gap-4">
-            <input type="date" name="" id="" className='bg-white p-2 w-1/2' value={selectedDate} onChange={(e) => handleDateChange(e)} />
-            <button><i className='bx bxs-file-plus bg-white p-2 h-full text-3xl text-green-600 rounded shadow cursor-pointer'></i></button>
+        <div className="flex gap-4 md:gap-0 lg:gap-0 flex-col md:flex-row lg:flex-row items-center justify-between">
+          <div className="text-sm text-slate-700 font-medium">Analítica real de la flota</div>
+          <div className="w-full flex-col md:w-1/2 lg:w-1/2 flex md:flex-row lg:flex-row justify-end gap-4">
+            <input type="date" className='bg-white p-2 w-1/2' value={selectedDate} onChange={handleDateChange} />
             <button><i className='bx bxs-file-pdf bg-white p-2 h-full text-3xl text-red-600 rounded shadow cursor-pointer'></i></button>
           </div>
         </div>
         <div className="flex flex-row gap-4 ">
-          <KpiCard title="Consumo" value="$733.2K" deltaUp data={data} />
-          <KpiCard title="Recorrido" value="RD$ 1.85M" deltaUp={false} data={data} />
-          <KpiCard title="Estado" value="82.1%" deltaText="5.1% vs PY" deltaUp data={data} />
+          <KpiCard title="Consumo" value={`${totalConsumption.toFixed(1)} pts`} deltaUp data={data} />
+          <KpiCard title="Recorrido" value={`${buses.length} unidades`} deltaUp={false} data={data} />
+          <KpiCard title="Estado" value={`${alertCount} alertas`} deltaText={`Velocidad media ${avgSpeed.toFixed(1)} km/h`} deltaUp={alertCount === 0} data={data} />
         </div>
       </div>
       <div className="flex flex-row gap-4 row-span-3 w-full h-full">
-        <div className="w-1/2 h-full">
-          <Buses returnSelectedBus={selectedBus} />
+        <div className="w-1/2 h-full overflow-y-auto rounded-xl bg-white p-4 shadow">
+          <h1 className="text-2xl font-extrabold tracking-wide text-center mb-4">Vehículos</h1>
+          <div className="flex flex-col gap-3 overflow-y-auto max-h-[calc(100%-2.5rem)] pr-1">
+            {buses.map((bus) => (
+              <button
+                key={bus.id}
+                onClick={() => selectedBus(bus.id)}
+                className={[
+                  'w-full text-left flex items-center gap-3 px-3 py-3 rounded-2xl border shadow-sm transition',
+                  selectedBusId === bus.id
+                    ? 'bg-cyan-50 border-cyan-200 ring-cyan-200'
+                    : 'bg-white border-gray-100 hover:border-gray-200',
+                ].join(' ')}
+              >
+                <div className="leading-tight">
+                  <div className="font-extrabold text-gray-900">{bus.name}</div>
+                  <div className="text-gray-600">{bus.engine}</div>
+                  <div className="text-gray-600">Plate {bus.plate}</div>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex flex-col gap-4 h-full w-full">
-          {/* Gráfico de Nivel Real vs Estimado */}
           <div className="bg-white h-1/2 w-full p-4 rounded shadow">
             <h1 className='text-center font-bold tracking-[1.5px] mb-4'>
-              Nivel Real vs Estimado - {busSelected?.name}
+              Nivel Real vs Estimado - {busSelected.name}
             </h1>
             <ResponsiveContainer width="100%" height="90%">
-              <AreaChart
-                data={chartData}
-                margin={{
-                  top: 20,
-                  right: 30,
-                  left: 20,
-                  bottom: 5,
-                }}
-              >
+              <AreaChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="time"
-                  tick={{ fontSize: 12 }}
-                />
-                <YAxis
-                  width={40}
-                  tick={{ fontSize: 12 }}
-                  domain={[0, 100]}
-                  label={{ value: '%', angle: -90, position: 'insideLeft' }}
-                />
-                <Tooltip
-                  formatter={(value) => [`${value}%`, 'Nivel']}
-                  labelFormatter={(label) => `Hora: ${label}`}
-                />
+                <XAxis dataKey="time" tick={{ fontSize: 12 }} />
+                <YAxis width={40} tick={{ fontSize: 12 }} domain={[0, 100]} label={{ value: '%', angle: -90, position: 'insideLeft' }} />
+                <Tooltip formatter={(value) => [`${value}%`, 'Nivel']} labelFormatter={(label) => `Hora: ${label}`} />
                 <Legend />
-                <Area
-                  type="monotone"
-                  dataKey="dieselReal"
-                  stroke="#8884d8"
-                  fill="#8884d8"
-                  fillOpacity={0.6}
-                  name="Nivel Real"
-                  strokeWidth={2}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="dieselEstimated"
-                  stroke="#82ca9d"
-                  fill="#82ca9d"
-                  fillOpacity={0.6}
-                  name="Nivel Estimado"
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                />
+                <Area type="monotone" dataKey="dieselReal" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} name="Nivel Real" strokeWidth={2} />
+                <Area type="monotone" dataKey="dieselEstimated" stroke="#82ca9d" fill="#82ca9d" fillOpacity={0.6} name="Nivel Estimado" strokeWidth={2} strokeDasharray="5 5" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
 
-          {/* Gráfico de Error de Predicción */}
           <div className="bg-white h-1/2 w-full p-4 rounded shadow">
             <h1 className='text-center font-bold tracking-[1.5px] mb-4'>
-              Error de Predicción - {busSelected?.name}
+              Error de Predicción - {busSelected.name}
             </h1>
             <ResponsiveContainer width="100%" height="90%">
-              <AreaChart
-                data={chartData.filter(item => item.dieselReal !== null && item.dieselEstimated !== null)}
-                margin={{
-                  top: 20,
-                  right: 30,
-                  left: 20,
-                  bottom: 5,
-                }}
-              >
+              <AreaChart data={chartData.filter(item => item.dieselReal !== null && item.dieselEstimated !== null)} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="time"
-                  tick={{ fontSize: 12 }}
-                />
-                <YAxis
-                  width={40}
-                  tick={{ fontSize: 12 }}
-                  label={{ value: '% Error', angle: -90, position: 'insideLeft' }}
-                />
-                <Tooltip
-                  formatter={(value) => [`${Math.abs(Number(value)).toFixed(1)}%`, 'Error']}
-                  labelFormatter={(label) => `Hora: ${label}`}
-                />
+                <XAxis dataKey="time" tick={{ fontSize: 12 }} />
+                <YAxis width={40} tick={{ fontSize: 12 }} label={{ value: '% Error', angle: -90, position: 'insideLeft' }} />
+                <Tooltip formatter={(value) => [`${Math.abs(Number(value)).toFixed(1)}%`, 'Error']} labelFormatter={(label) => `Hora: ${label}`} />
                 <Legend />
-                <Area
-                  type="monotone"
-                  dataKey={(data) => Math.abs(data.dieselReal - data.dieselEstimated)}
-                  stroke="#ff7300"
-                  fill="#ff7300"
-                  fillOpacity={0.6}
-                  name="Error Absoluto"
-                  strokeWidth={2}
-                />
+                <Area type="monotone" dataKey={(data) => Math.abs(data.dieselReal - data.dieselEstimated)} stroke="#ff7300" fill="#ff7300" fillOpacity={0.6} name="Error Absoluto" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

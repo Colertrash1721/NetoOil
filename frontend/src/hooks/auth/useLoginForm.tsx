@@ -1,17 +1,17 @@
-import React from "react";
-import { useState, useEffect } from "react";
-import { InputState } from "@/types/auth";
-import { loginService } from "@/services/auth/login";
+import React from 'react';
+import { useEffect, useState } from 'react';
+import { InputState } from '@/types/auth';
+import { loginService } from '@/services/auth/login';
 import { useRouter } from 'next/navigation';
-import axios from "axios";
+import { getApiErrorMessage } from '@/services/api/client';
 
 export default function useLoginForm() {
   const router = useRouter();
-  const [successMessage, setsuccessMessage] = useState("")
-  const [errorMessage, seterrorMessage] = useState("")
+  const [successMessage, setsuccessMessage] = useState('');
+  const [errorMessage, seterrorMessage] = useState('');
   const [handleInputs, sethandleInputs] = useState<InputState>({
-    username: "",
-    password: "",
+    username: '',
+    password: '',
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -21,47 +21,40 @@ export default function useLoginForm() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    seterrorMessage('');
+
     try {
       const { username, password } = handleInputs;
-      console.log(username, password);
-      
       const loginResponse = await loginService(username, password);
-      console.log(loginResponse);
-      localStorage.setItem("username", loginResponse.user.username);
-      localStorage.setItem("rol", loginResponse.user.role);
-      localStorage.setItem("token", loginResponse.token);
-      setsuccessMessage("✅ Autenticación completa");
-      
+
+      localStorage.setItem('username', loginResponse.user.username);
+      localStorage.setItem('rol', loginResponse.user.role);
+      localStorage.setItem('token', loginResponse.token);
+      setsuccessMessage(loginResponse.message || 'Autenticación completa');
+
       setTimeout(() => {
         if (loginResponse.user.role === 'admin') {
           router.push('/admin');
+          return;
         }
-        else{
-          router.push('/client');
-        }
+
+        router.push('/client');
       }, 3000);
-      
-    } catch (error: any) {
-      if (axios.isAxiosError(error)) {
-        console.log(error.response?.data);
-        seterrorMessage(error.response?.data.message)
-      } else {
-        console.log("Error desconocido:", error);
-        seterrorMessage(error.response?.data.message)
-      }
+    } catch (error: unknown) {
+      seterrorMessage(getApiErrorMessage(error, 'No se pudo iniciar sesión.'));
     }
   };
 
   useEffect(() => {
     if (errorMessage) {
-      const timer = setTimeout(() => seterrorMessage(""), 3000);
+      const timer = setTimeout(() => seterrorMessage(''), 3000);
       return () => clearTimeout(timer);
     }
   }, [errorMessage]);
 
   useEffect(() => {
     if (successMessage) {
-      const timer = setTimeout(() => setsuccessMessage(""), 3000);
+      const timer = setTimeout(() => setsuccessMessage(''), 3000);
       return () => clearTimeout(timer);
     }
   }, [successMessage]);

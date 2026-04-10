@@ -19,18 +19,18 @@ export default function Inputs({ name, label, type, value, icon, min, max, onCha
     // This component renders an input field with a floating label that moves above the input when it has a value.
     const hadValue = useInputState(value || "", label);
   return (
-    <div className={`relative flex items-center justify-center inputGroup w-3/4 mb-4 dark:text-white bg-gray-200 ${rounded ? "md:rounded lg:rounded" : "rounded"}`}>
+    <div className={`relative flex items-center justify-center inputGroup w-3/4 mb-4 text-black bg-gray-200 ${rounded ? "md:rounded lg:rounded" : "rounded"}`}>
       <input
         type={`${type}`}
         name={`${name || label?.toLowerCase()}`}
         value={value}
         min={min}
         max={max}
-        className={`peer ${rounded ? "md:rounded lg:rounded overflow-hidden" : "rounded"} p-2 w-full outline-none dark:text-white text-black focus:shadow-md transition-all dark:border-black `}
+        className={`peer ${rounded ? "md:rounded lg:rounded overflow-hidden" : "rounded"} p-2 w-full outline-none text-black border-black focus:shadow-md transition-all `}
         onChange={onChange}
       />
       <label
-        className={`absolute dark:text-white text-black ${
+        className={`absolute text-black ${
           hadValue.hadValue && hadValue.type == label
             ? "top-[-20px] left-2"
             : "top-2 left-6"

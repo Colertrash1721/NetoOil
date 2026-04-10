@@ -13,7 +13,7 @@ export default function LoginForm() {
     <div className='flex items-center justify-center h-full gap-3 flex-col'>
       {errorMessage && <LoginFail descriptionFail={errorMessage} />}
       {successMessage && <LoginSucess descriptionSucess={successMessage} />}
-      <div className="rounded-full overflow-hidden mb-8">
+      <div className="rounded-full overflow-hidden mb-8 q">
         <Image src="/assets/image.png" alt="Logo" width={200} height={150} />
       </div>
       <form className="w-full flex flex-col items-center justify-center gap-4" onSubmit={handleSubmit}>

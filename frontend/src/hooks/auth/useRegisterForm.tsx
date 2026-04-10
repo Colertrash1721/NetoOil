@@ -1,62 +1,80 @@
-import React from "react";
-import { useState, useEffect } from "react";
-import { InputState, RegisterState } from "@/types/auth";
-import { loginService } from "@/services/auth/login";
+import React from 'react';
+import { useEffect, useState } from 'react';
+import { RegisterState } from '@/types/auth';
 import { useRouter } from 'next/navigation';
-import axios from "axios";
-import { registerService } from "@/services/auth/register";
+import { registerService } from '@/services/auth/register';
+import { getApiErrorMessage } from '@/services/api/client';
+import { CompanyApi, getCompaniesService } from '@/services/companies/service';
 
 export default function useRegisterForm() {
   const router = useRouter();
-  const [successMessage, setsuccessMessage] = useState("")
-  const [errorMessage, seterrorMessage] = useState("")
+  const [successMessage, setsuccessMessage] = useState('');
+  const [errorMessage, seterrorMessage] = useState('');
+  const [companies, setCompanies] = useState<CompanyApi[]>([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [handleInputs, sethandleInputs] = useState<RegisterState>({
-    username: "",
-    password: "",
-    company: "",
-    email: "",
-    rnc: "",
+    username: '',
+    password: '',
+    email: '',
+    companyId: '',
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     sethandleInputs((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    seterrorMessage('');
+
     try {
-      const { username, password, company, email, rnc } = handleInputs;
-      const response = await registerService(username, password, email, rnc, company)
-      setsuccessMessage("✅ Registro completado con éxito");
+      const { username, password, email, companyId } = handleInputs;
+      await registerService(username, password, email, Number(companyId));
+      setsuccessMessage('Registro enviado con exito. Espera aprobacion.');
+
       setTimeout(() => {
         router.push('/');
       }, 3000);
-      
-    } catch (error: any) {
-      if (axios.isAxiosError(error)) {
-        console.log(error.response?.data);
-        seterrorMessage(error.response?.data.message)
-      } else {
-        console.log("Error desconocido:", error);
-        seterrorMessage(error.response?.data.message)
-      }
+    } catch (error: unknown) {
+      seterrorMessage(getApiErrorMessage(error, 'No se pudo completar el registro.'));
     }
   };
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const data = await getCompaniesService();
+        setCompanies(data);
+      } catch (error) {
+        seterrorMessage(getApiErrorMessage(error, 'No se pudieron cargar las empresas.'));
+      } finally {
+        setLoadingCompanies(false);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
     if (errorMessage) {
-      const timer = setTimeout(() => seterrorMessage(""), 3000);
+      const timer = setTimeout(() => seterrorMessage(''), 3000);
       return () => clearTimeout(timer);
     }
   }, [errorMessage]);
 
   useEffect(() => {
     if (successMessage) {
-      const timer = setTimeout(() => setsuccessMessage(""), 3000);
+      const timer = setTimeout(() => setsuccessMessage(''), 3000);
       return () => clearTimeout(timer);
     }
   }, [successMessage]);
 
-  return { handleInputs, handleChange, handleSubmit, successMessage, errorMessage };
+  return {
+    companies,
+    loadingCompanies,
+    handleInputs,
+    handleChange,
+    handleSubmit,
+    successMessage,
+    errorMessage,
+  };
 }

@@ -1,22 +1,27 @@
-import axios from "axios";
+import { apiClient } from '@/services/api/client';
 
-export const registerService = async (email: string, password: string, username: string, rnc: string, company: string) =>{
-    const response = await axios.post(
-    `${process.env.NEXT_PUBLIC_MY_BACKEND_API}/auth`,
-    {
-      email,
-      password,
-      username,
-      rnc,
-      company
-    },
-    {
-      headers: {
-        "Content-Type": "application/json",
-      },
-      withCredentials: true
-    }
-  );
-  console.log(response);
+type RegisterResponse = {
+  message: string;
+  user: {
+    id: number;
+    username: string;
+    email: string;
+    role: string;
+  };
+};
+
+export const registerService = async (
+  username: string,
+  password: string,
+  email: string,
+  companyId: number,
+) => {
+  const response = await apiClient.post<RegisterResponse>('/auth/register', {
+    username,
+    password,
+    email,
+    companyId,
+  });
+
   return response.data;
-}
+};
