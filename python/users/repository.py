@@ -13,12 +13,14 @@ def create_user(
     email: str,
     password: str,
     company_id: int,
+    company_role: str = "viewer",
 ) -> User:
     user = User(
         username=username,
         email=email,
         hashed_password=password,
         status="pending",
+        companyRole=company_role,
         creationDate=date.today(),
         lastConnection=None,
         companyId=company_id,
@@ -63,6 +65,13 @@ def get_all_users(db: Session) -> list[tuple[User, str]]:
 
 def update_user_status(db: Session, user: User, status: str) -> User:
     user.status = status
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def update_user_company_role(db: Session, user: User, company_role: str) -> User:
+    user.companyRole = company_role
     db.commit()
     db.refresh(user)
     return user

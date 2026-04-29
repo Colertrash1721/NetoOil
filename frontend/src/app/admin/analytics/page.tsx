@@ -1,22 +1,15 @@
 'use client';
 
-import 'react-grid-layout/css/styles.css';
-import 'react-resizable/css/styles.css';
-import KpiCard from '@/components/ui/KpiCard';
 import { useEffect, useMemo, useState } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { BusItem } from '@/types/buses';
 import { prepareChartData } from '@/lib/utils';
 import { getVehicleDetailService, getVehiclesService, VehicleDetailApi } from '@/services/vehicles/service';
 
 function mapStatus(status?: string | null): BusItem['status'] {
   const value = (status || '').toLowerCase();
-  if (value.includes('alert') || value.includes('alarm')) {
-    return 'Alerta';
-  }
-  if (value.includes('terminal') || value.includes('idle') || value.includes('inactive')) {
-    return 'En terminal';
-  }
+  if (value.includes('alert') || value.includes('alarm')) return 'Alerta';
+  if (value.includes('terminal') || value.includes('idle') || value.includes('inactive')) return 'En terminal';
   return 'En ruta';
 }
 
@@ -26,10 +19,7 @@ function mapVehicle(detail: VehicleDetailApi): BusItem {
         number: item.fuelLevel ?? 0,
         timestamp: item.recordedAt,
       }))
-    : [{
-        number: detail.lastFuelLevel ?? 0,
-        timestamp: detail.lastUpdate ?? detail.creationDate,
-      }];
+    : [{ number: detail.lastFuelLevel ?? 0, timestamp: detail.lastUpdate ?? detail.creationDate }];
 
   return {
     id: detail.id,
@@ -60,26 +50,36 @@ function mapVehicle(detail: VehicleDetailApi): BusItem {
   };
 }
 
-const data = [
-  { name: 'January', uv: 4000 },
-  { name: 'February', uv: 3000 },
-  { name: 'March', uv: 5000 },
-  { name: 'April', uv: 4000 },
-  { name: 'May', uv: 6000 },
-  { name: 'June', uv: 7000 },
-  { name: 'July', uv: 8000 },
-  { name: 'August', uv: 6000 },
-  { name: 'September', uv: 7000 },
-  { name: 'October', uv: 8000 },
-  { name: 'November', uv: 9000 },
-  { name: 'December', uv: 10000 },
-];
+function MetricCard({
+  title,
+  value,
+  detail,
+  icon,
+}: {
+  title: string;
+  value: string;
+  detail: string;
+  icon: string;
+}) {
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
+        </div>
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-50 text-xl text-cyan-700">
+          <i className={`bx ${icon}`} />
+        </div>
+      </div>
+      <p className="mt-2 text-sm text-slate-600">{detail}</p>
+    </article>
+  );
+}
 
 export default function AnalyticsPage() {
-  const year = new Date().getFullYear();
-  const month = (new Date().getMonth() + 1).toString().padStart(2, '0');
-  const day = new Date().getDate().toString().padStart(2, '0');
-  const [selectedDate, setSelectedDate] = useState(year + '-' + month + '-' + day);
+  const today = new Date().toISOString().slice(0, 10);
+  const [selectedDate, setSelectedDate] = useState(today);
   const [buses, setBuses] = useState<BusItem[]>([]);
   const [selectedBusId, setSelectedBusId] = useState<number | null>(null);
   const [busSelected, setBusSelected] = useState<BusItem | null>(null);
@@ -107,22 +107,8 @@ export default function AnalyticsPage() {
     void load();
   }, []);
 
-  const selectedBus = (busId: number) => {
-    setSelectedBusId(busId);
-    const bus = buses.find((item) => item.id === busId);
-    if (bus) {
-      setBusSelected(bus);
-    }
-  };
-
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSelectedDate(e.target.value);
-  };
-
   const chartData = useMemo(() => {
-    if (!busSelected) {
-      return [];
-    }
+    if (!busSelected) return [];
     return prepareChartData(busSelected);
   }, [busSelected]);
 
@@ -135,100 +121,135 @@ export default function AnalyticsPage() {
   }, [buses]);
 
   const avgSpeed = useMemo(() => {
-    if (buses.length === 0) {
-      return 0;
-    }
+    if (buses.length === 0) return 0;
     return buses.reduce((sum, bus) => sum + bus.telemetry.speed, 0) / buses.length;
   }, [buses]);
 
-  const alertCount = useMemo(() => {
-    return buses.filter((bus) => bus.status === 'Alerta').length;
-  }, [buses]);
+  const alertCount = buses.filter((bus) => bus.status === 'Alerta').length;
 
   if (loading) {
-    return <div className="rounded-xl bg-white p-6 shadow">Cargando datos...</div>;
+    return <div className="rounded-lg bg-white p-6 text-slate-600 shadow-sm">Cargando analítica...</div>;
   }
 
   if (!busSelected) {
-    return <div className="rounded-xl bg-white p-6 shadow">No hay vehículos registrados.</div>;
+    return <div className="rounded-lg bg-white p-6 text-slate-600 shadow-sm">No hay vehículos registrados.</div>;
   }
 
   return (
-    <div className="grid grid-rows-3 gap-4 min-h-[600px] h-full w-full">
-      <div className="flex flex-col gap-4 w-full h-fit">
-        <div className="flex gap-4 md:gap-0 lg:gap-0 flex-col md:flex-row lg:flex-row items-center justify-between">
-          <div className="text-sm text-slate-700 font-medium">Analítica real de la flota</div>
-          <div className="w-full flex-col md:w-1/2 lg:w-1/2 flex md:flex-row lg:flex-row justify-end gap-4">
-            <input type="date" className='bg-white p-2 w-1/2' value={selectedDate} onChange={handleDateChange} />
-            <button><i className='bx bxs-file-pdf bg-white p-2 h-full text-3xl text-red-600 rounded shadow cursor-pointer'></i></button>
+    <div className="flex flex-col gap-5">
+      <section className="rounded-lg bg-slate-950 p-5 text-white shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.32em] text-cyan-200/75">Analítica real</p>
+            <h1 className="mt-2 text-3xl font-semibold">Flota y combustible</h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-300">
+              Comparación de nivel real, modelo estimado, alertas y estabilidad de lectura por vehículo.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              type="date"
+              className="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white outline-none"
+              value={selectedDate}
+              onChange={(event) => setSelectedDate(event.target.value)}
+            />
+            <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-50">
+              <i className="bx bxs-file-pdf text-lg text-red-600" />
+              PDF
+            </button>
           </div>
         </div>
-        <div className="flex flex-row gap-4 ">
-          <KpiCard title="Consumo" value={`${totalConsumption.toFixed(1)} pts`} deltaUp data={data} />
-          <KpiCard title="Recorrido" value={`${buses.length} unidades`} deltaUp={false} data={data} />
-          <KpiCard title="Estado" value={`${alertCount} alertas`} deltaText={`Velocidad media ${avgSpeed.toFixed(1)} km/h`} deltaUp={alertCount === 0} data={data} />
-        </div>
-      </div>
-      <div className="flex flex-row gap-4 row-span-3 w-full h-full">
-        <div className="w-1/2 h-full overflow-y-auto rounded-xl bg-white p-4 shadow">
-          <h1 className="text-2xl font-extrabold tracking-wide text-center mb-4">Vehículos</h1>
-          <div className="flex flex-col gap-3 overflow-y-auto max-h-[calc(100%-2.5rem)] pr-1">
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <MetricCard title="Consumo" value={`${totalConsumption.toFixed(1)} pts`} detail="Consumo acumulado en la muestra" icon="bx-droplet" />
+        <MetricCard title="Unidades" value={`${buses.length}`} detail="Vehículos con telemetría disponible" icon="bx-car" />
+        <MetricCard title="Estado" value={`${alertCount} alertas`} detail={`Velocidad media ${avgSpeed.toFixed(1)} km/h`} icon="bx-pulse" />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+        <aside className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Vehículos</p>
+              <h2 className="mt-1 text-xl font-semibold text-slate-950">Selección</h2>
+            </div>
+            <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+              {buses.length}
+            </span>
+          </div>
+          <div className="max-h-[620px] space-y-2 overflow-y-auto pr-1">
             {buses.map((bus) => (
               <button
                 key={bus.id}
-                onClick={() => selectedBus(bus.id)}
+                onClick={() => {
+                  setSelectedBusId(bus.id);
+                  setBusSelected(bus);
+                }}
                 className={[
-                  'w-full text-left flex items-center gap-3 px-3 py-3 rounded-2xl border shadow-sm transition',
+                  'w-full rounded-lg border px-3 py-3 text-left transition',
                   selectedBusId === bus.id
-                    ? 'bg-cyan-50 border-cyan-200 ring-cyan-200'
-                    : 'bg-white border-gray-100 hover:border-gray-200',
+                    ? 'border-cyan-300 bg-cyan-50 text-cyan-950'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
                 ].join(' ')}
               >
-                <div className="leading-tight">
-                  <div className="font-extrabold text-gray-900">{bus.name}</div>
-                  <div className="text-gray-600">{bus.engine}</div>
-                  <div className="text-gray-600">Plate {bus.plate}</div>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{bus.name}</p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{bus.plate}</p>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                    {bus.status}
+                  </span>
                 </div>
               </button>
             ))}
           </div>
-        </div>
+        </aside>
 
-        <div className="flex flex-col gap-4 h-full w-full">
-          <div className="bg-white h-1/2 w-full p-4 rounded shadow">
-            <h1 className='text-center font-bold tracking-[1.5px] mb-4'>
-              Nivel Real vs Estimado - {busSelected.name}
-            </h1>
-            <ResponsiveContainer width="100%" height="90%">
-              <AreaChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="time" tick={{ fontSize: 12 }} />
-                <YAxis width={40} tick={{ fontSize: 12 }} domain={[0, 100]} label={{ value: '%', angle: -90, position: 'insideLeft' }} />
-                <Tooltip formatter={(value) => [`${value}%`, 'Nivel']} labelFormatter={(label) => `Hora: ${label}`} />
-                <Legend />
-                <Area type="monotone" dataKey="dieselReal" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} name="Nivel Real" strokeWidth={2} />
-                <Area type="monotone" dataKey="dieselEstimated" stroke="#82ca9d" fill="#82ca9d" fillOpacity={0.6} name="Nivel Estimado" strokeWidth={2} strokeDasharray="5 5" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+        <div className="grid gap-4">
+          <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Nivel</p>
+                <h2 className="text-xl font-semibold text-slate-950">Real vs estimado - {busSelected.name}</h2>
+              </div>
+              <span className="text-sm font-medium text-slate-500">{busSelected.plate}</span>
+            </div>
+            <div className="h-[340px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 10, right: 16, left: -8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <XAxis dataKey="time" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                  <YAxis width={40} tick={{ fontSize: 12, fill: '#64748b' }} domain={[0, 100]} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(value) => [`${value}%`, 'Nivel']} labelFormatter={(label) => `Hora: ${label}`} />
+                  <Legend />
+                  <Area type="monotone" dataKey="dieselReal" stroke="#0891b2" fill="#67e8f9" fillOpacity={0.45} name="Nivel real" strokeWidth={2} />
+                  <Area type="monotone" dataKey="dieselEstimated" stroke="#f59e0b" fill="#fcd34d" fillOpacity={0.25} name="Nivel estimado" strokeWidth={2} strokeDasharray="5 5" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </article>
 
-          <div className="bg-white h-1/2 w-full p-4 rounded shadow">
-            <h1 className='text-center font-bold tracking-[1.5px] mb-4'>
-              Error de Predicción - {busSelected.name}
-            </h1>
-            <ResponsiveContainer width="100%" height="90%">
-              <AreaChart data={chartData.filter(item => item.dieselReal !== null && item.dieselEstimated !== null)} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="time" tick={{ fontSize: 12 }} />
-                <YAxis width={40} tick={{ fontSize: 12 }} label={{ value: '% Error', angle: -90, position: 'insideLeft' }} />
-                <Tooltip formatter={(value) => [`${Math.abs(Number(value)).toFixed(1)}%`, 'Error']} labelFormatter={(label) => `Hora: ${label}`} />
-                <Legend />
-                <Area type="monotone" dataKey={(data) => Math.abs(data.dieselReal - data.dieselEstimated)} stroke="#ff7300" fill="#ff7300" fillOpacity={0.6} name="Error Absoluto" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Precisión</p>
+              <h2 className="text-xl font-semibold text-slate-950">Error de predicción</h2>
+            </div>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData.filter((item) => item.dieselReal !== null && item.dieselEstimated !== null)} margin={{ top: 10, right: 16, left: -8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <XAxis dataKey="time" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                  <YAxis width={40} tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(value) => [`${Math.abs(Number(value)).toFixed(1)}%`, 'Error']} labelFormatter={(label) => `Hora: ${label}`} />
+                  <Area type="monotone" dataKey={(item) => Math.abs(item.dieselReal - item.dieselEstimated)} stroke="#e11d48" fill="#fb7185" fillOpacity={0.25} name="Error absoluto" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </article>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

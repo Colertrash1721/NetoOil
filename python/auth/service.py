@@ -103,7 +103,7 @@ def login_service(db: Session, user: str, password: str, response: Response) -> 
 
         return _build_login_response(
             response=response,
-            role="admin",
+            role="superadmin",
             entity_id=admin.id,
             username=admin.username,
             email=admin.email,
@@ -130,7 +130,7 @@ def login_service(db: Session, user: str, password: str, response: Response) -> 
 
         return _build_login_response(
             response=response,
-            role="client",
+            role="admin" if getattr(registered_user, "companyRole", "viewer") == "admin" else "user",
             entity_id=registered_user.id,
             username=registered_user.username,
             email=registered_user.email,
@@ -163,7 +163,7 @@ def login_service(db: Session, user: str, password: str, response: Response) -> 
 
         return _build_login_response(
             response=response,
-            role="company",
+            role="admin",
             entity_id=company.id,
             username=company_username,
             email=company.email,
@@ -217,6 +217,7 @@ def register_service(
         email=email,
         password=hash_password(password),
         company_id=company_id,
+        company_role="viewer",
     )
 
     return RegisterResponse(
@@ -225,7 +226,7 @@ def register_service(
             "id": user_record.id,
             "username": user_record.username,
             "email": user_record.email,
-            "role": "client",
+            "role": "user",
             "companyId": user_record.companyId,
         },
     )

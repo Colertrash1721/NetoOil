@@ -38,6 +38,8 @@ export type VehicleApi = {
   sensorIdentifier?: string | null;
   status?: string | null;
   assignedCompanyId: number;
+  assignedDriverId?: number | null;
+  assignedDriverName?: string | null;
   creationDate: string;
   lastTemperature?: number | null;
   lastInclination?: number | null;
@@ -78,6 +80,7 @@ export type VehicleCreatePayload = {
   sensorIdentifier?: string | null;
   status?: string;
   assignedCompanyId: number;
+  assignedDriverId?: number | null;
 };
 
 export type VehicleUpdatePayload = Partial<VehicleCreatePayload> & {
@@ -109,5 +112,10 @@ export const createVehicleService = async (payload: VehicleCreatePayload) => {
 
 export const updateVehicleService = async (vehicleId: number, payload: VehicleUpdatePayload) => {
   const response = await apiClient.patch<VehicleApi>(`/vehicles/${vehicleId}`, payload);
+  return response.data;
+};
+
+export const deleteVehicleService = async (vehicleId: number) => {
+  const response = await apiClient.delete<{ message: string }>(`/vehicles/${vehicleId}`);
   return response.data;
 };

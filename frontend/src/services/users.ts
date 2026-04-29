@@ -5,6 +5,7 @@ export type UserApi = {
   username: string;
   email: string;
   status: 'pending' | 'accepted' | 'rejected';
+  companyRole: 'admin' | 'viewer';
   creationDate: string;
   lastConnection: string | null;
   companyId: number;
@@ -21,5 +22,13 @@ export const updateUserStatusService = async (
   status: UserApi['status'],
 ) => {
   const response = await apiClient.patch<UserApi>(`/users/${userId}/status`, { status });
+  return response.data;
+};
+
+export const updateUserCompanyRoleService = async (
+  userId: number,
+  companyRole: UserApi['companyRole'],
+) => {
+  const response = await apiClient.patch<UserApi>(`/users/${userId}/company-role`, { companyRole });
   return response.data;
 };

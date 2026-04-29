@@ -9,7 +9,10 @@ class AlertEvent(Base):
     __tablename__ = "alert_events"
 
     id = Column(Integer, primary_key=True, index=True)
-    vehicleId = Column(Integer, ForeignKey("vehicles.id"), nullable=False, index=True)
+    vehicleId = Column(Integer, ForeignKey("vehicles.id"), nullable=True, index=True)
+    entityType = Column(String(40), nullable=False, default="vehicle", index=True)
+    entityId = Column(Integer, nullable=True, index=True)
+    assignedCompanyId = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
     sensorIdentifier = Column(String(100), nullable=True, index=True)
     alertType = Column(String(50), nullable=False, index=True)
     severity = Column(String(30), nullable=False, default="medium", index=True)

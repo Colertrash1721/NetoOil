@@ -10,7 +10,7 @@ type NavClientProps = {
 };
 
 export default function NavClient({ navOpen, onClose }: NavClientProps) {
-  const { buses, busSelected, setBusSelected, loading } = useBusContext();
+  const { buses, busSelected, setBusSelected, loading, dataSource, loadDemoFleet } = useBusContext();
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
 
@@ -63,7 +63,19 @@ export default function NavClient({ navOpen, onClose }: NavClientProps) {
             </div>
             <div className="mt-3 flex items-center justify-between text-xs text-slate-300">
               <span>{loading ? 'Sincronizando...' : `${filteredBuses.length} unidades visibles`}</span>
-              <span>base de datos</span>
+              <button
+                type="button"
+                onClick={loadDemoFleet}
+                className={[
+                  'rounded-full border px-2.5 py-1 font-semibold transition',
+                  dataSource === 'demo'
+                    ? 'border-cyan-300/40 bg-cyan-400/15 text-cyan-100'
+                    : 'border-white/10 bg-white/5 text-slate-300 hover:border-cyan-300/30 hover:text-cyan-100',
+                ].join(' ')}
+                title="Cargar 50 vehículos demo"
+              >
+                {dataSource === 'demo' ? 'demo activa' : 'base de datos'}
+              </button>
             </div>
           </div>
 

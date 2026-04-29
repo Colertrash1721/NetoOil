@@ -8,10 +8,15 @@ class UserCreate(BaseModel):
     email: str
     password: str
     companyId: int
+    companyRole: str = "viewer"
 
 
 class UserStatusUpdate(BaseModel):
     status: str
+
+
+class UserRoleUpdate(BaseModel):
+    companyRole: str
 
 
 class UserRead(BaseModel):
@@ -21,6 +26,7 @@ class UserRead(BaseModel):
     username: str
     email: str
     status: str
+    companyRole: str
     creationDate: date
     lastConnection: date | None = None
     companyId: int

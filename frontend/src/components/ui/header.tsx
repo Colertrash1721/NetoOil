@@ -13,7 +13,11 @@ type HeaderProps = {
 
 const navItems = [
   { label: 'Dashboard', path: '/client' },
+  { label: 'Vehículos', path: '/client/vehicles' },
   { label: 'Mapa', path: '/client/map' },
+  { label: 'Alertas', path: '/client/alerts' },
+  { label: 'Conductores', path: '/client/drivers' },
+  { label: 'Demo', path: '/client/demo' },
 ];
 
 const emptyBusTone = {
@@ -25,7 +29,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const { busSelected, loading } = useBusContext();
+  const { busSelected, loading, dataSource } = useBusContext();
 
   const bus = busSelected;
   const tone = bus ? getBusTone(bus) : emptyBusTone;
@@ -36,9 +40,10 @@ export default function Header({ onMenuClick }: HeaderProps) {
     } catch {
       // keep local logout even if backend is offline
     } finally {
-      localStorage.removeItem('username');
-      localStorage.removeItem('rol');
-      localStorage.removeItem('token');
+                localStorage.removeItem('username');
+                localStorage.removeItem('rol');
+                localStorage.removeItem('token');
+                localStorage.removeItem('companyId');
       startTransition(() => router.push('/'));
     }
   };
@@ -65,10 +70,10 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
         <div className="flex flex-wrap items-center gap-3">
           <span className={`rounded-full px-3 py-1 text-xs font-semibold transition ${tone.badge}`}>
-            {loading ? 'Cargando...' : 'Base de datos'}
+            {loading ? 'Cargando...' : dataSource === 'demo' ? 'Demo activa' : 'Base de datos'}
           </span>
           <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
-            Solo datos reales
+            {dataSource === 'demo' ? 'Datos de demostración' : 'Solo datos reales'}
           </span>
           {bus && (
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-100">

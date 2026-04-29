@@ -19,7 +19,7 @@ router = APIRouter(prefix="/companies", tags=["companies"])
 @router.get("/", response_model=list[CompanyRead])
 def read_all_company(
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(require_roles("admin")),
+    _: AuthContext = Depends(require_roles("superadmin")),
 ):
     return read_all_company_service(db)
 
@@ -28,7 +28,7 @@ def read_all_company(
 def read_company_by_id(
     id: int,
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(require_roles("admin")),
+    _: AuthContext = Depends(require_roles("superadmin")),
 ):
     try:
         return read_company_by_id_service(db, id)
@@ -40,7 +40,7 @@ def read_company_by_id(
 def create_company(
     company: CompanyCreate,
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(require_roles("admin")),
+    _: AuthContext = Depends(require_roles("superadmin")),
 ):
     try:
         return create_company_service(db, company)
@@ -52,7 +52,7 @@ def create_company(
 def delete_company(
     id: int,
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(require_roles("admin")),
+    _: AuthContext = Depends(require_roles("superadmin")),
 ):
     try:
         return delete_company_service(db, id)
@@ -65,7 +65,7 @@ def update_company(
     id: int,
     data: CompanyUpdate,
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(require_roles("admin")),
+    _: AuthContext = Depends(require_roles("superadmin")),
 ):
     try:
         return update_company_service(db, id, data)

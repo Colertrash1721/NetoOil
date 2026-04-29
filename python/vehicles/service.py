@@ -2,6 +2,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from alerts.engine import evaluate_vehicle_telemetry_alerts
 from auth.security import AuthContext
 from companies.repository import get_company_by_id
 from companies.models import Company
@@ -28,7 +29,28 @@ from vehicles.schemas import (
 )
 
 
-def _build_vehicle_read(vehicle) -> VehicleRead:
+def _get_driver_name(db: Session | None, driver_id: int | None) -> str | None:
+    if db is None or driver_id is None:
+        return None
+    from fuel_management.models import Driver
+
+    driver = db.get(Driver, driver_id)
+    return driver.fullName if driver else None
+
+
+def _validate_assigned_driver(db: Session, company_id: int, driver_id: int | None) -> None:
+    if driver_id is None:
+        return
+    from fuel_management.models import Driver
+
+    driver = db.get(Driver, driver_id)
+    if not driver:
+        raise ValueError("Assigned driver not found.")
+    if driver.assignedCompanyId != company_id:
+        raise ValueError("Assigned driver belongs to another company.")
+
+
+def _build_vehicle_read(vehicle, db: Session | None = None) -> VehicleRead:
     stopped_minutes = None
     if vehicle.deviceIsStopped and vehicle.stopStartedAt:
         stopped_minutes = round(
@@ -38,6 +60,7 @@ def _build_vehicle_read(vehicle) -> VehicleRead:
 
     payload = VehicleRead.model_validate(vehicle).model_dump()
     payload["stoppedMinutes"] = stopped_minutes
+    payload["assignedDriverName"] = _get_driver_name(db, vehicle.assignedDriverId)
     return VehicleRead(**payload)
 
 
@@ -49,7 +72,7 @@ def _build_vehicle_detail(db: Session, vehicle) -> VehicleDetail:
     ]
 
     return VehicleDetail(
-        **_build_vehicle_read(vehicle).model_dump(),
+        **_build_vehicle_read(vehicle, db).model_dump(),
         assignedCompanyName=company.name if company else None,
         telemetryHistory=history,
     )
@@ -67,16 +90,17 @@ def create_vehicle_service(db: Session, data: VehicleCreate) -> VehicleRead:
 
     if not get_company_by_id(db, data.assignedCompanyId):
         raise ValueError("Assigned company not found.")
+    _validate_assigned_driver(db, data.assignedCompanyId, data.assignedDriverId)
 
     vehicle = create_vehicle(db, data.model_dump())
-    return _build_vehicle_read(vehicle)
+    return _build_vehicle_read(vehicle, db)
 
 
 def read_all_vehicles_service(db: Session, auth: AuthContext | None = None) -> list[VehicleRead]:
     vehicles = get_all_vehicles(db)
-    if auth and auth.role in {"company", "client"} and auth.company_id is not None:
+    if auth and auth.role in {"company", "admin", "user"} and auth.company_id is not None:
         vehicles = [vehicle for vehicle in vehicles if vehicle.assignedCompanyId == auth.company_id]
-    return [_build_vehicle_read(vehicle) for vehicle in vehicles]
+    return [_build_vehicle_read(vehicle, db) for vehicle in vehicles]
 
 
 def read_vehicle_by_id_service(db: Session, vehicle_id: int) -> VehicleDetail:
@@ -116,9 +140,12 @@ def update_vehicle_service(db: Session, vehicle_id: int, data: VehicleUpdate) ->
     if "assignedCompanyId" in update_data:
         if not get_company_by_id(db, update_data["assignedCompanyId"]):
             raise ValueError("Assigned company not found.")
+    target_company_id = update_data.get("assignedCompanyId", vehicle.assignedCompanyId)
+    if "assignedDriverId" in update_data:
+        _validate_assigned_driver(db, target_company_id, update_data["assignedDriverId"])
 
     vehicle = update_vehicle(db, vehicle, update_data)
-    return _build_vehicle_read(vehicle)
+    return _build_vehicle_read(vehicle, db)
 
 
 def delete_vehicle_service(db: Session, vehicle_id: int) -> dict[str, str]:
@@ -141,6 +168,9 @@ def create_vehicle_telemetry_service(
     telemetry_payload["vehicleId"] = vehicle_id
     telemetry_payload["recordedAt"] = telemetry_payload["recordedAt"] or datetime.utcnow()
 
+    previous_telemetry = get_previous_vehicle_telemetry(
+        db, vehicle_id, telemetry_payload["recordedAt"]
+    )
     validation = validate_vehicle_consumption(
         vehicle,
         current_fuel_level=telemetry_payload["fuelLevel"],
@@ -150,9 +180,7 @@ def create_vehicle_telemetry_service(
         current_speed=telemetry_payload["speed"],
         movement=None,
         recorded_at=telemetry_payload["recordedAt"],
-        previous_telemetry=get_previous_vehicle_telemetry(
-            db, vehicle_id, telemetry_payload["recordedAt"]
-        ),
+        previous_telemetry=previous_telemetry,
     )
     telemetry_payload["distanceKm"] = validation.distance_km
     telemetry_payload["expectedFuelUsed"] = validation.expected_fuel_used
@@ -176,6 +204,12 @@ def create_vehicle_telemetry_service(
     vehicle.lastBatteryLevel = telemetry.batteryLevel
     vehicle.lastAlarm = telemetry.alarm
     vehicle.lastUpdate = telemetry.recordedAt
+    evaluate_vehicle_telemetry_alerts(
+        db,
+        vehicle=vehicle,
+        telemetry=telemetry,
+        previous_telemetry=previous_telemetry,
+    )
     db.commit()
     db.refresh(vehicle)
 

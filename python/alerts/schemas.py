@@ -7,7 +7,10 @@ class AlertRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: int
-    vehicleId: int
+    vehicleId: int | None = None
+    entityType: str = "vehicle"
+    entityId: int | None = None
+    assignedCompanyId: int | None = None
     sensorIdentifier: str | None = None
     alertType: str
     severity: str

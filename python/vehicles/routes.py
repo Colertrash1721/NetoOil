@@ -21,14 +21,13 @@ from vehicles.service import (
     read_vehicle_telemetry_history_service,
     update_vehicle_service,
 )
-from vehicles.service import read_vehicle_by_id_service
 
 
 router = APIRouter(prefix="/vehicles", tags=["vehicles"])
 
 
 def _ensure_vehicle_company_access(auth: AuthContext, company_id: int) -> None:
-    if auth.role in {"company", "client"} and auth.company_id != company_id:
+    if auth.role in {"company", "admin", "user"} and auth.company_id != company_id:
         raise HTTPException(status_code=403, detail="Insufficient permissions.")
 
 
@@ -58,7 +57,7 @@ def get_vehicle_by_id(
 def create_vehicle(
     vehicle: VehicleCreate,
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_roles("admin", "company")),
+    auth: AuthContext = Depends(require_roles("superadmin", "admin", "company")),
 ):
     try:
         _ensure_vehicle_company_access(auth, vehicle.assignedCompanyId)
@@ -72,7 +71,7 @@ def update_vehicle(
     vehicle_id: int,
     data: VehicleUpdate,
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_roles("admin", "company")),
+    auth: AuthContext = Depends(require_roles("superadmin", "admin", "company")),
 ):
     try:
         existing = read_vehicle_by_id_service(db, vehicle_id)
@@ -89,7 +88,7 @@ def update_vehicle(
 def delete_vehicle(
     vehicle_id: int,
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_roles("admin", "company")),
+    auth: AuthContext = Depends(require_roles("superadmin", "admin", "company")),
 ):
     try:
         existing = read_vehicle_by_id_service(db, vehicle_id)
@@ -104,7 +103,7 @@ def create_vehicle_telemetry(
     vehicle_id: int,
     telemetry: VehicleTelemetryCreate,
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_roles("admin", "company")),
+    auth: AuthContext = Depends(require_roles("superadmin", "admin", "company")),
 ):
     try:
         existing = read_vehicle_by_id_service(db, vehicle_id)

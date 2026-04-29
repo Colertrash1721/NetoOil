@@ -15,6 +15,7 @@ const Background = dynamic(() => import('@/components/r3f/background'), {
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
+  const showVehicleSidebar = pathname !== '/client';
 
   useEffect(() => {
     setNavOpen(false);
@@ -26,11 +27,11 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         <Background />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.18),transparent_26%),radial-gradient(circle_at_80%_20%,rgba(251,191,36,0.14),transparent_18%),linear-gradient(180deg,rgba(2,6,23,0.22),rgba(2,6,23,0.84))]" />
         <div className="relative z-10 mx-auto flex min-h-screen max-w-[1800px] flex-col p-4 lg:p-6">
-          <div className="grid flex-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
-            <NavClient navOpen={navOpen} onClose={() => setNavOpen(false)} />
+          <div className={showVehicleSidebar ? 'grid flex-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start' : 'grid flex-1 gap-4 lg:grid-cols-1 lg:items-start'}>
+            {showVehicleSidebar ? <NavClient navOpen={navOpen} onClose={() => setNavOpen(false)} /> : null}
 
             <section className="min-w-0 rounded-4xl border border-white/10 bg-slate-950/45 p-4 shadow-2xl shadow-black/40 backdrop-blur-xl lg:p-6">
-              <Header onMenuClick={() => setNavOpen(true)} />
+              <Header onMenuClick={showVehicleSidebar ? () => setNavOpen(true) : undefined} />
               <div className="mt-6">{children}</div>
             </section>
           </div>

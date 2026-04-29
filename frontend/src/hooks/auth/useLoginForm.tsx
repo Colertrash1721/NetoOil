@@ -30,10 +30,15 @@ export default function useLoginForm() {
       localStorage.setItem('username', loginResponse.user.username);
       localStorage.setItem('rol', loginResponse.user.role);
       localStorage.setItem('token', loginResponse.token);
+      if (loginResponse.user.companyId) {
+        localStorage.setItem('companyId', String(loginResponse.user.companyId));
+      } else {
+        localStorage.removeItem('companyId');
+      }
       setsuccessMessage(loginResponse.message || 'Autenticación completa');
 
       setTimeout(() => {
-        if (loginResponse.user.role === 'admin') {
+        if (loginResponse.user.role === 'superadmin') {
           router.push('/admin');
           return;
         }

@@ -53,7 +53,7 @@ python/
 ### Comando de arranque
 
 ```bash
-uvicorn main:app --reload
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Variables de entorno relevantes

@@ -17,7 +17,7 @@ router = APIRouter(prefix="/admins", tags=["admins"])
 @router.get("/", response_model=list[ReadAdmin])
 def get_all_admins(
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(require_roles("admin")),
+    _: AuthContext = Depends(require_roles("superadmin")),
 ):
     return read_all_admin_service(db)
 
@@ -25,7 +25,7 @@ def get_all_admins(
 def get_admin_by_id(
     id: int,
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(require_roles("admin")),
+    _: AuthContext = Depends(require_roles("superadmin")),
 ):
     try:
         return read_admin_by_id_service(db, id)
@@ -36,7 +36,7 @@ def get_admin_by_id(
 def create_admin(
     admin: CreateAdmin,
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(require_roles("admin")),
+    _: AuthContext = Depends(require_roles("superadmin")),
 ):
     try:
         return create_admin_service(db, admin)
@@ -47,7 +47,7 @@ def create_admin(
 def delete_admin(
     id: int,
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(require_roles("admin")),
+    _: AuthContext = Depends(require_roles("superadmin")),
 ):
     try:
         return delete_admin_service(db, id)
@@ -59,7 +59,7 @@ def update_admin(
     id: int,
     data: CreateAdmin,
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(require_roles("admin")),
+    _: AuthContext = Depends(require_roles("superadmin")),
 ):
     try:
         return update_admin_service(db, id, data)

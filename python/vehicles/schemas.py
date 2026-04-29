@@ -23,6 +23,7 @@ class VehicleBase(BaseModel):
     sensorIdentifier: str | None = None
     status: str = "active"
     assignedCompanyId: int
+    assignedDriverId: int | None = None
 
 
 class VehicleCreate(VehicleBase):
@@ -49,6 +50,7 @@ class VehicleUpdate(BaseModel):
     sensorIdentifier: str | None = None
     status: str | None = None
     assignedCompanyId: int | None = None
+    assignedDriverId: int | None = None
 
 
 class VehicleTelemetryCreate(BaseModel):
@@ -102,6 +104,7 @@ class VehicleRead(VehicleBase):
     lastMovementAt: datetime | None = None
     stoppedMinutes: float | None = None
     lastUpdate: datetime | None = None
+    assignedDriverName: str | None = None
 
 
 class VehicleDetail(VehicleRead):

@@ -9,6 +9,7 @@ from typing import Any
 import paho.mqtt.client as mqtt
 from sqlalchemy.orm import Session
 
+from alerts.engine import evaluate_vehicle_telemetry_alerts
 from alerts.service import STOP_ALERT_THRESHOLD_MINUTES, close_open_alerts, create_alert_if_needed
 from db.database import SessionLocal
 from sensor_data.models import SensorDevice, SensorDeviceTelemetry, SensorMqttMessage
@@ -394,6 +395,9 @@ class MqttIngestService:
         if not vehicle:
             return
 
+        previous_telemetry = get_previous_vehicle_telemetry(
+            db, vehicle.id, telemetry_payload["recordedAt"]
+        )
         validation = validate_vehicle_consumption(
             vehicle,
             current_fuel_level=telemetry_payload["io729"],
@@ -403,9 +407,7 @@ class MqttIngestService:
             current_speed=telemetry_payload["speed"],
             movement=telemetry_payload["movement"],
             recorded_at=telemetry_payload["recordedAt"],
-            previous_telemetry=get_previous_vehicle_telemetry(
-                db, vehicle.id, telemetry_payload["recordedAt"]
-            ),
+            previous_telemetry=previous_telemetry,
         )
 
         telemetry = VehicleTelemetry(
@@ -444,6 +446,13 @@ class MqttIngestService:
         vehicle.lastBatteryLevel = telemetry.batteryLevel
         vehicle.lastAlarm = telemetry.alarm
         vehicle.lastUpdate = telemetry.recordedAt
+        db.flush()
+        evaluate_vehicle_telemetry_alerts(
+            db,
+            vehicle=vehicle,
+            telemetry=telemetry,
+            previous_telemetry=previous_telemetry,
+        )
         is_stopped = validation.status == "stationary"
 
         if is_stopped:

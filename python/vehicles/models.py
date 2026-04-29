@@ -29,6 +29,7 @@ class Vehicle(Base):
     sensorIdentifier = Column(String(100), unique=True, index=True, nullable=True)
     status = Column(String(50), nullable=False, default="active")
     assignedCompanyId = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    assignedDriverId = Column(Integer, ForeignKey("drivers.id"), nullable=True, index=True)
     lastTemperature = Column(Float, nullable=True)
     lastInclination = Column(Float, nullable=True)
     lastVolume = Column(Float, nullable=True)

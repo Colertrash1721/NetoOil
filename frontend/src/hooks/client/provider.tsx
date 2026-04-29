@@ -20,6 +20,8 @@ type BusContextType = {
   busSelected: BusItem | null;
   setBusSelected: (value: BusItem | null) => void;
   loading: boolean;
+  dataSource: 'database' | 'demo';
+  loadDemoFleet: () => void;
   refreshFleet: () => Promise<void>;
 };
 
@@ -108,6 +110,65 @@ async function buildFleetFromDatabase() {
     .map((detail) => mapBackendVehicle(detail));
 }
 
+function buildDemoFleet(): BusItem[] {
+  const now = Date.now();
+  const brands = ['Hyundai', 'Isuzu', 'Toyota', 'Mercedes-Benz', 'Mitsubishi'];
+  const models = ['HD65', 'NPR', 'Coaster', 'Sprinter', 'Rosa'];
+  const routes = ['Distrito Nacional', 'Santo Domingo Este', 'Santiago', 'San Cristobal', 'La Romana'];
+
+  return Array.from({ length: 50 }, (_, index) => {
+    const unit = index + 1;
+    const baseFuel = 35 + (unit % 60);
+    const status: BusItem['status'] = unit % 9 === 0 ? 'Alerta' : unit % 7 === 0 ? 'En terminal' : 'En ruta';
+    const DieselLevel = Array.from({ length: 8 }, (__, pointIndex) => ({
+      number: Math.max(8, baseFuel - (7 - pointIndex) * 1.8 + (unit % 4)),
+      timestamp: new Date(now - (7 - pointIndex) * 45 * 60 * 1000).toISOString(),
+    }));
+
+    return {
+      id: 10000 + unit,
+      name: `${brands[unit % brands.length]} ${models[unit % models.length]}`,
+      engine: `Diesel ${2.4 + (unit % 5) * 0.3}L`,
+      plate: `NF-${unit.toString().padStart(3, '0')}`,
+      route: routes[unit % routes.length],
+      driver: `Chofer Demo ${unit.toString().padStart(2, '0')}`,
+      status,
+      location: {
+        lat: 18.4861 + (unit % 12) * 0.012,
+        lng: -69.9312 - (unit % 12) * 0.011,
+        label: routes[unit % routes.length],
+      },
+      DieselLevel,
+      EstimatedLevel: DieselLevel.map((point, pointIndex) => ({
+        number: Math.min(100, point.number + ((unit + pointIndex) % 5) - 2),
+        timestamp: point.timestamp,
+      })),
+      telemetry: {
+        temperature: 29 + (unit % 8),
+        inclination: (unit % 6) * 0.6,
+        volume: 42 + (unit % 44),
+        battery: 64 + (unit % 35),
+        pressure: 27 + (unit % 8),
+        humidity: 42 + (unit % 24),
+        speed: status === 'En terminal' ? 0 : 22 + (unit % 62),
+        updatedAt: new Date(now - unit * 3 * 60 * 1000).toISOString(),
+      },
+      events: status === 'Alerta'
+        ? [
+            {
+              id: unit,
+              type: 'Variacion brusca de combustible',
+              severity: 'WARNING',
+              time: 'Hace pocos minutos',
+              detail: 'Lectura demo generada para validar el panel de monitoreo.',
+              location: routes[unit % routes.length],
+            },
+          ]
+        : [],
+    };
+  });
+}
+
 export const useBusContext = () => {
   const context = useContext(BusContext);
   if (context === undefined) {
@@ -120,6 +181,7 @@ export const BusProvider = ({ children }: { children: ReactNode }) => {
   const [buses, setBuses] = useState<BusItem[]>([]);
   const [busSelected, setBusSelected] = useState<BusItem | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [dataSource, setDataSource] = useState<'database' | 'demo'>('database');
 
   const refreshFleet = async () => {
     setLoading(true);
@@ -134,6 +196,7 @@ export const BusProvider = ({ children }: { children: ReactNode }) => {
       }
 
       setBuses(databaseFleet);
+      setDataSource('database');
       setBusSelected((current) => {
         if (!current) {
           return databaseFleet[0] ?? null;
@@ -146,6 +209,14 @@ export const BusProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadDemoFleet = () => {
+    const demoFleet = buildDemoFleet();
+    setDataSource('demo');
+    setBuses(demoFleet);
+    setBusSelected(demoFleet[0] ?? null);
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -165,6 +236,8 @@ export const BusProvider = ({ children }: { children: ReactNode }) => {
         busSelected,
         setBusSelected: handleSetBusSelected,
         loading,
+        dataSource,
+        loadDemoFleet,
         refreshFleet,
       }}
     >

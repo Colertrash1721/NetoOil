@@ -13,6 +13,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     username = Column(String(100), unique=True, index=True, nullable=False)
     status = Column(String(50), nullable=False, default="pending")
+    companyRole = Column(String(50), nullable=False, default="viewer", index=True)
     creationDate = Column(Date, nullable=False, default=date_type.today)
     lastConnection = Column(Date, nullable=True)
     companyId = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)

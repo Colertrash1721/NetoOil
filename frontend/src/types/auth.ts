@@ -20,6 +20,7 @@ export type AuthUser = {
   username: string;
   email: string;
   role: string;
+  companyId?: number | null;
 };
 
 export type LoginResponse = {
