@@ -37,8 +37,10 @@ class TankBase(BaseModel):
     name: str
     location: str
     fuelType: str = "diesel"
+    storageType: str = "aereo"
     capacity: float = Field(gt=0)
     currentVolume: float = Field(ge=0)
+    targetRefillGallons: float | None = Field(default=None, ge=0)
     temperature: float | None = None
     density: float | None = None
     status: str = "operational"
@@ -55,8 +57,10 @@ class TankUpdate(BaseModel):
     name: str | None = None
     location: str | None = None
     fuelType: str | None = None
+    storageType: str | None = None
     capacity: float | None = None
     currentVolume: float | None = None
+    targetRefillGallons: float | None = Field(default=None, ge=0)
     temperature: float | None = None
     density: float | None = None
     status: str | None = None
@@ -102,6 +106,11 @@ class DispenserBase(BaseModel):
     location: str
     tankId: int
     totalizer: float = 0
+    targetRefillGallons: float | None = Field(default=None, ge=0)
+    supportedIdentificationMethods: str = "rfid,mifare,anpr,ble"
+    fallbackIdentificationMethod: str = "anpr"
+    productConfigurations: list[dict] | None = None
+    hoseCount: int = Field(default=1, ge=1)
     status: str = "online"
     deviceIdentifier: str | None = None
     assignedCompanyId: int
@@ -117,9 +126,18 @@ class DispenserUpdate(BaseModel):
     location: str | None = None
     tankId: int | None = None
     totalizer: float | None = None
+    targetRefillGallons: float | None = Field(default=None, ge=0)
+    supportedIdentificationMethods: str | None = None
+    fallbackIdentificationMethod: str | None = None
+    productConfigurations: list[dict] | None = None
+    hoseCount: int | None = Field(default=None, ge=1)
     status: str | None = None
     deviceIdentifier: str | None = None
     assignedCompanyId: int | None = None
+
+
+class TargetRefillGallonsUpdate(BaseModel):
+    targetRefillGallons: float | None = Field(default=None, ge=0)
 
 
 class DispenserRead(DispenserBase):
@@ -180,6 +198,13 @@ class RefuelingTransactionCreate(BaseModel):
     vehicleId: int
     driverId: int | None = None
     dispenserId: int
+    operatorName: str | None = None
+    authorizationNumber: str | None = None
+    productType: str = "diesel"
+    hoseNumber: int = Field(default=1, ge=1)
+    flowMeterStart: float | None = None
+    flowMeterEnd: float | None = None
+    flowMeterAccuracyPercent: float | None = Field(default=None, ge=0)
     requestedVolume: float | None = None
     authorizedVolume: float | None = None
     dispensedVolume: float = Field(gt=0)
@@ -206,6 +231,14 @@ class RefuelingTransactionRead(BaseModel):
     tankId: int
     tankCode: str | None = None
     policyId: int | None = None
+    operatorName: str | None = None
+    authorizationNumber: str | None = None
+    productType: str
+    hoseNumber: int
+    flowMeterStart: float | None = None
+    flowMeterEnd: float | None = None
+    flowMeterAccuracyPercent: float | None = None
+    identificationStatus: str
     requestedVolume: float | None = None
     authorizedVolume: float | None = None
     dispensedVolume: float
@@ -220,6 +253,94 @@ class RefuelingTransactionRead(BaseModel):
     createdAt: datetime
 
 
+class FuelSimulationRequest(BaseModel):
+    deviceType: str
+    deviceId: int
+    operation: str
+    gallons: float = Field(gt=0)
+
+
+class FuelSimulationResult(BaseModel):
+    deviceType: str
+    deviceId: int
+    operation: str
+    requestedGallons: float
+    configuredLimitGallons: float | None = None
+    appliedGallons: float
+    cutGallons: float
+    beforeGallons: float
+    afterGallons: float
+    capacityGallons: float | None = None
+    status: str
+    messages: list[str] = Field(default_factory=list)
+    alertIds: list[int] = Field(default_factory=list)
+
+
+class WirelessSensorDemoRequest(BaseModel):
+    sensorIdentifier: str
+    vehicleId: int | None = None
+    batteryLevel: float | None = Field(default=None, ge=0, le=100)
+    tamperDetected: bool = False
+    remoteConfig: dict | None = None
+
+
+class OfflineReplayEvent(BaseModel):
+    sensorIdentifier: str
+    vehicleId: int | None = None
+    sequence: int
+    originalTimestamp: datetime
+    batteryLevel: float | None = Field(default=None, ge=0, le=100)
+    payload: dict | None = None
+
+
+class OfflineReplayRequest(BaseModel):
+    events: list[OfflineReplayEvent]
+
+
+class DeviceDemoResult(BaseModel):
+    status: str
+    processed: int = 0
+    alertIds: list[int] = Field(default_factory=list)
+    messages: list[str] = Field(default_factory=list)
+
+
+class CustomRoleCreate(BaseModel):
+    name: str
+    description: str | None = None
+    assignedCompanyId: int | None = None
+    permissions: list[str] = Field(default_factory=list)
+    status: str = "active"
+
+
+class CustomRoleRead(CustomRoleCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    createdAt: datetime
+
+
+class WebhookEndpointCreate(BaseModel):
+    name: str
+    url: str
+    eventTypes: str = "alert.created,transaction.created"
+    retryCount: int = Field(default=3, ge=0, le=10)
+    secret: str | None = None
+    status: str = "active"
+
+
+class WebhookEndpointRead(WebhookEndpointCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    createdAt: datetime
+
+
+class WebhookTestRequest(BaseModel):
+    webhookId: int
+    eventType: str = "alert.created"
+    payload: dict | None = None
+
+
 class AlertThresholdCreate(BaseModel):
     scope: str
     entityId: int | None = None
@@ -229,6 +350,9 @@ class AlertThresholdCreate(BaseModel):
     maxValue: float | None = None
     variationLimit: float | None = None
     notificationEmail: str | None = None
+    notificationChannels: str = "internal,email"
+    smsNumber: str | None = None
+    webhookUrl: str | None = None
     enabled: bool = True
 
 
@@ -241,6 +365,9 @@ class AlertThresholdUpdate(BaseModel):
     maxValue: float | None = None
     variationLimit: float | None = None
     notificationEmail: str | None = None
+    notificationChannels: str | None = None
+    smsNumber: str | None = None
+    webhookUrl: str | None = None
     enabled: bool | None = None
 
 

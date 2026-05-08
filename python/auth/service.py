@@ -33,6 +33,13 @@ class AuthError(Exception):
         super().__init__(message)
 
 
+def _application_role(company_role: str | None) -> str:
+    normalized_role = (company_role or "user").strip().lower()
+    if normalized_role in {"superadmin", "admin"}:
+        return normalized_role
+    return "user"
+
+
 def _set_auth_cookie(response: Response, token: str) -> None:
     if COOKIE_SECURE == "true":
         secure = True
@@ -130,7 +137,7 @@ def login_service(db: Session, user: str, password: str, response: Response) -> 
 
         return _build_login_response(
             response=response,
-            role="admin" if getattr(registered_user, "companyRole", "viewer") == "admin" else "user",
+            role=_application_role(getattr(registered_user, "companyRole", "user")),
             entity_id=registered_user.id,
             username=registered_user.username,
             email=registered_user.email,
@@ -217,7 +224,7 @@ def register_service(
         email=email,
         password=hash_password(password),
         company_id=company_id,
-        company_role="viewer",
+        company_role="user",
     )
 
     return RegisterResponse(

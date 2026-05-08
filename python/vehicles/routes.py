@@ -5,6 +5,7 @@ from auth.dependencies import get_current_auth, require_roles
 from auth.security import AuthContext
 from db.database import get_db
 from vehicles.schemas import (
+    TargetRefillGallonsUpdate,
     VehicleCreate,
     VehicleDetail,
     VehicleRead,
@@ -79,6 +80,26 @@ def update_vehicle(
         if data.assignedCompanyId is not None:
             _ensure_vehicle_company_access(auth, data.assignedCompanyId)
         return update_vehicle_service(db, vehicle_id, data)
+    except ValueError as error:
+        status_code = 404 if str(error) == "Vehicle not found." else 400
+        raise HTTPException(status_code=status_code, detail=str(error))
+
+
+@router.patch("/{vehicle_id}/target-refill-gallons", response_model=VehicleRead)
+def update_vehicle_target_refill_gallons(
+    vehicle_id: int,
+    data: TargetRefillGallonsUpdate,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_roles("superadmin", "admin")),
+):
+    try:
+        existing = read_vehicle_by_id_service(db, vehicle_id)
+        _ensure_vehicle_company_access(auth, existing.assignedCompanyId)
+        return update_vehicle_service(
+            db,
+            vehicle_id,
+            VehicleUpdate(targetRefillGallons=data.targetRefillGallons),
+        )
     except ValueError as error:
         status_code = 404 if str(error) == "Vehicle not found." else 400
         raise HTTPException(status_code=status_code, detail=str(error))

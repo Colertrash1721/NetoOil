@@ -26,6 +26,8 @@ export type VehicleApi = {
   version?: string | null;
   vin?: string | null;
   color?: string | null;
+  fleetName?: string | null;
+  corridor?: string | null;
   seatCount?: number | null;
   engineType?: string | null;
   engineDisplacement?: string | null;
@@ -34,8 +36,13 @@ export type VehicleApi = {
   maxTorque?: string | null;
   fuelConsumption?: string | null;
   tankCapacity?: string | null;
+  targetRefillGallons?: number | null;
   transmission?: string | null;
   sensorIdentifier?: string | null;
+  rfidTag?: string | null;
+  mifareCard?: string | null;
+  anprPlate?: string | null;
+  bleIdentifier?: string | null;
   status?: string | null;
   assignedCompanyId: number;
   assignedDriverId?: number | null;
@@ -68,6 +75,8 @@ export type VehicleCreatePayload = {
   version?: string | null;
   vin?: string | null;
   color?: string | null;
+  fleetName?: string | null;
+  corridor?: string | null;
   seatCount?: number | null;
   engineType?: string | null;
   engineDisplacement?: string | null;
@@ -76,8 +85,13 @@ export type VehicleCreatePayload = {
   maxTorque?: string | null;
   fuelConsumption?: string | null;
   tankCapacity?: string | null;
+  targetRefillGallons?: number | null;
   transmission?: string | null;
   sensorIdentifier?: string | null;
+  rfidTag?: string | null;
+  mifareCard?: string | null;
+  anprPlate?: string | null;
+  bleIdentifier?: string | null;
   status?: string;
   assignedCompanyId: number;
   assignedDriverId?: number | null;
@@ -112,6 +126,16 @@ export const createVehicleService = async (payload: VehicleCreatePayload) => {
 
 export const updateVehicleService = async (vehicleId: number, payload: VehicleUpdatePayload) => {
   const response = await apiClient.patch<VehicleApi>(`/vehicles/${vehicleId}`, payload);
+  return response.data;
+};
+
+export const updateVehicleTargetRefillGallonsService = async (
+  vehicleId: number,
+  targetRefillGallons: number | null,
+) => {
+  const response = await apiClient.patch<VehicleApi>(`/vehicles/${vehicleId}/target-refill-gallons`, {
+    targetRefillGallons,
+  });
   return response.data;
 };
 

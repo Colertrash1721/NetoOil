@@ -17,9 +17,9 @@ router = APIRouter(prefix="/users", tags=["users"])
 @router.get("/", response_model=list[UserRead])
 def get_all_users(
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(require_roles("superadmin")),
+    auth: AuthContext = Depends(require_roles("superadmin")),
 ):
-    return read_all_users_service(db)
+    return read_all_users_service(db, auth)
 
 
 @router.patch("/{user_id}/status", response_model=UserRead)
@@ -27,13 +27,15 @@ def patch_user_status(
     user_id: int,
     data: UserStatusUpdate,
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(require_roles("superadmin")),
+    auth: AuthContext = Depends(require_roles("superadmin")),
 ):
     try:
-        return update_user_status_service(db, user_id, data.status)
+        return update_user_status_service(db, user_id, data.status, auth)
     except ValueError as error:
         message = str(error)
         status_code = 404 if "no encontrado" in message.lower() else 400
+        if "permisos insuficientes" in message.lower():
+            status_code = 403
         raise HTTPException(status_code=status_code, detail=message)
 
 
@@ -42,11 +44,13 @@ def patch_user_company_role(
     user_id: int,
     data: UserRoleUpdate,
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(require_roles("superadmin")),
+    auth: AuthContext = Depends(require_roles("superadmin")),
 ):
     try:
-        return update_user_company_role_service(db, user_id, data.companyRole)
+        return update_user_company_role_service(db, user_id, data.companyRole, auth)
     except ValueError as error:
         message = str(error)
         status_code = 404 if "no encontrado" in message.lower() else 400
+        if "permisos insuficientes" in message.lower():
+            status_code = 403
         raise HTTPException(status_code=status_code, detail=message)

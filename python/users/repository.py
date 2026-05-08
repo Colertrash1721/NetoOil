@@ -54,13 +54,11 @@ def get_user_by_user(db: Session, user: str) -> User | None:
     return db.query(User).filter((User.email == user) | (User.username == user)).first()
 
 
-def get_all_users(db: Session) -> list[tuple[User, str]]:
-    return (
-        db.query(User, Company.name)
-        .join(Company, Company.id == User.companyId)
-        .order_by(User.id.desc())
-        .all()
-    )
+def get_all_users(db: Session, company_id: int | None = None) -> list[tuple[User, str]]:
+    query = db.query(User, Company.name).join(Company, Company.id == User.companyId)
+    if company_id is not None:
+        query = query.filter(User.companyId == company_id)
+    return query.order_by(User.id.desc()).all()
 
 
 def update_user_status(db: Session, user: User, status: str) -> User:

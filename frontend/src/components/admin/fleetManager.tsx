@@ -3,6 +3,7 @@
 import type { ChangeEvent, FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 
+import { TransactionHistoryTable } from '@/components/fuel/transactionHistoryTable';
 import { Card } from '@/components/ui/card';
 import { getApiErrorMessage } from '@/services/api/client';
 import { CompanyApi, getCompaniesService } from '@/services/companies/service';
@@ -21,13 +22,16 @@ import {
   getTanksService,
   TankApi,
   TankCreatePayload,
+  updateDispenserTargetRefillGallonsService,
   updateDispenserService,
+  updateTankTargetRefillGallonsService,
   updateTankService,
 } from '@/services/fuel/service';
 import {
   createVehicleService,
   deleteVehicleService,
   getVehiclesService,
+  updateVehicleTargetRefillGallonsService,
   updateVehicleService,
   VehicleApi,
   VehicleCreatePayload,
@@ -43,6 +47,8 @@ type VehicleFormState = {
   year: string;
   version: string;
   vin: string;
+  fleetName: string;
+  corridor: string;
   engineType: string;
   engineDisplacement: string;
   engineCylinderCount: string;
@@ -50,6 +56,7 @@ type VehicleFormState = {
   maxTorque: string;
   fuelConsumption: string;
   tankCapacity: string;
+  targetRefillGallons: string;
   transmission: string;
   sensorIdentifier: string;
 };
@@ -68,8 +75,10 @@ type TankFormState = {
   name: string;
   location: string;
   fuelType: string;
+  storageType: string;
   capacity: string;
   currentVolume: string;
+  targetRefillGallons: string;
   temperature: string;
   density: string;
   sensorIdentifier: string;
@@ -82,6 +91,7 @@ type DispenserFormState = {
   name: string;
   location: string;
   totalizer: string;
+  targetRefillGallons: string;
   deviceIdentifier: string;
 };
 
@@ -95,6 +105,8 @@ const initialFormState: VehicleFormState = {
   year: '',
   version: '',
   vin: '',
+  fleetName: '',
+  corridor: '',
   engineType: '',
   engineDisplacement: '',
   engineCylinderCount: '',
@@ -102,6 +114,7 @@ const initialFormState: VehicleFormState = {
   maxTorque: '',
   fuelConsumption: '',
   tankCapacity: '',
+  targetRefillGallons: '',
   transmission: '',
   sensorIdentifier: '',
 };
@@ -120,8 +133,10 @@ const initialTankFormState: TankFormState = {
   name: '',
   location: '',
   fuelType: 'diesel',
+  storageType: 'aereo',
   capacity: '',
   currentVolume: '',
+  targetRefillGallons: '',
   temperature: '',
   density: '',
   sensorIdentifier: '',
@@ -134,6 +149,7 @@ const initialDispenserFormState: DispenserFormState = {
   name: '',
   location: '',
   totalizer: '0',
+  targetRefillGallons: '',
   deviceIdentifier: '',
 };
 
@@ -159,6 +175,9 @@ export default function FleetManager() {
   const [dispensers, setDispensers] = useState<DispenserApi[]>([]);
   const [drivers, setDrivers] = useState<DriverApi[]>([]);
   const [sensorDrafts, setSensorDrafts] = useState<Record<number, string>>({});
+  const [vehicleGallonDrafts, setVehicleGallonDrafts] = useState<Record<number, string>>({});
+  const [tankGallonDrafts, setTankGallonDrafts] = useState<Record<number, string>>({});
+  const [dispenserGallonDrafts, setDispenserGallonDrafts] = useState<Record<number, string>>({});
   const [form, setForm] = useState<VehicleFormState>(initialFormState);
   const [driverForm, setDriverForm] = useState<DriverFormState>(initialDriverFormState);
   const [tankForm, setTankForm] = useState<TankFormState>(initialTankFormState);
@@ -171,6 +190,10 @@ export default function FleetManager() {
   const [assigningId, setAssigningId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [transactionScope, setTransactionScope] = useState<'vehicles' | 'tanks' | 'dispensers'>('vehicles');
+  const [selectedTransactionVehicleId, setSelectedTransactionVehicleId] = useState<number | null>(null);
+  const [selectedTransactionTankId, setSelectedTransactionTankId] = useState<number | null>(null);
+  const [selectedTransactionDispenserId, setSelectedTransactionDispenserId] = useState<number | null>(null);
 
   async function loadFleetData() {
     setLoading(true);
@@ -192,9 +215,27 @@ export default function FleetManager() {
       setTanks(tankData);
       setDispensers(dispenserData);
       setDrivers(driverData);
+      setSelectedTransactionVehicleId((current) => current ?? vehicleData[0]?.id ?? null);
+      setSelectedTransactionTankId((current) => current ?? tankData[0]?.id ?? null);
+      setSelectedTransactionDispenserId((current) => current ?? dispenserData[0]?.id ?? null);
       setSensorDrafts(
         Object.fromEntries(
           vehicleData.map((vehicle) => [vehicle.id, vehicle.sensorIdentifier ?? '']),
+        ),
+      );
+      setVehicleGallonDrafts(
+        Object.fromEntries(
+          vehicleData.map((vehicle) => [vehicle.id, vehicle.targetRefillGallons?.toString() ?? '']),
+        ),
+      );
+      setTankGallonDrafts(
+        Object.fromEntries(
+          tankData.map((tank) => [tank.id, tank.targetRefillGallons?.toString() ?? '']),
+        ),
+      );
+      setDispenserGallonDrafts(
+        Object.fromEntries(
+          dispenserData.map((dispenser) => [dispenser.id, dispenser.targetRefillGallons?.toString() ?? '']),
         ),
       );
 
@@ -237,6 +278,7 @@ export default function FleetManager() {
 
   useEffect(() => {
     void loadFleetData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleFormChange(event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
@@ -276,6 +318,8 @@ export default function FleetManager() {
         year: toOptionalNumber(form.year),
         version: toOptionalString(form.version),
         vin: toOptionalString(form.vin),
+        fleetName: toOptionalString(form.fleetName),
+        corridor: toOptionalString(form.corridor),
         engineType: toOptionalString(form.engineType),
         engineDisplacement: toOptionalString(form.engineDisplacement),
         engineCylinderCount: toOptionalNumber(form.engineCylinderCount),
@@ -283,6 +327,7 @@ export default function FleetManager() {
         maxTorque: toOptionalString(form.maxTorque),
         fuelConsumption: toOptionalString(form.fuelConsumption),
         tankCapacity: toOptionalString(form.tankCapacity),
+        targetRefillGallons: toOptionalNumber(form.targetRefillGallons),
         transmission: toOptionalString(form.transmission),
         sensorIdentifier: toOptionalString(form.sensorIdentifier),
         status: 'active',
@@ -382,6 +427,21 @@ export default function FleetManager() {
     }
   }
 
+  async function handleVehicleGallonsChange(vehicleId: number) {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      await updateVehicleTargetRefillGallonsService(
+        vehicleId,
+        toOptionalNumber(vehicleGallonDrafts[vehicleId] ?? ''),
+      );
+      setSuccessMessage('Galones del vehiculo actualizados.');
+      await loadFleetData();
+    } catch (error) {
+      setErrorMessage(getApiErrorMessage(error, 'No se pudieron actualizar los galones del vehiculo.'));
+    }
+  }
+
   async function handleDeleteVehicle(vehicleId: number) {
     if (!window.confirm('Quieres borrar este vehiculo?')) return;
     setErrorMessage(null);
@@ -407,6 +467,18 @@ export default function FleetManager() {
     }
   }
 
+  async function handleTankGallonsChange(tankId: number) {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      await updateTankTargetRefillGallonsService(tankId, toOptionalNumber(tankGallonDrafts[tankId] ?? ''));
+      setSuccessMessage('Galones del tanque actualizados.');
+      await loadFleetData();
+    } catch (error) {
+      setErrorMessage(getApiErrorMessage(error, 'No se pudieron actualizar los galones del tanque.'));
+    }
+  }
+
   async function handleDeleteTank(tankId: number) {
     if (!window.confirm('Quieres borrar este tanque?')) return;
     setErrorMessage(null);
@@ -429,6 +501,21 @@ export default function FleetManager() {
       await loadFleetData();
     } catch (error) {
       setErrorMessage(getApiErrorMessage(error, 'No se pudo actualizar el estado del dispensador.'));
+    }
+  }
+
+  async function handleDispenserGallonsChange(dispenserId: number) {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      await updateDispenserTargetRefillGallonsService(
+        dispenserId,
+        toOptionalNumber(dispenserGallonDrafts[dispenserId] ?? ''),
+      );
+      setSuccessMessage('Galones del dispensador actualizados.');
+      await loadFleetData();
+    } catch (error) {
+      setErrorMessage(getApiErrorMessage(error, 'No se pudieron actualizar los galones del dispensador.'));
     }
   }
 
@@ -458,8 +545,10 @@ export default function FleetManager() {
         name: tankForm.name.trim(),
         location: tankForm.location.trim(),
         fuelType: tankForm.fuelType.trim() || 'diesel',
+        storageType: tankForm.storageType.trim() || 'aereo',
         capacity: Number(tankForm.capacity),
         currentVolume: Number(tankForm.currentVolume || 0),
+        targetRefillGallons: toOptionalNumber(tankForm.targetRefillGallons),
         temperature: toOptionalNumber(tankForm.temperature),
         density: toOptionalNumber(tankForm.density),
         sensorIdentifier: toOptionalString(tankForm.sensorIdentifier),
@@ -502,6 +591,7 @@ export default function FleetManager() {
         name: dispenserForm.name.trim(),
         location: dispenserForm.location.trim(),
         totalizer: Number(dispenserForm.totalizer || 0),
+        targetRefillGallons: toOptionalNumber(dispenserForm.targetRefillGallons),
         deviceIdentifier: toOptionalString(dispenserForm.deviceIdentifier),
         status: 'online',
       };
@@ -528,6 +618,37 @@ export default function FleetManager() {
   function getCompanyName(companyId: number) {
     return companies.find((company) => company.id === companyId)?.name ?? `Empresa ${companyId}`;
   }
+
+  const selectedTransactionVehicle = vehicles.find((vehicle) => vehicle.id === selectedTransactionVehicleId);
+  const selectedTransactionTank = tanks.find((tank) => tank.id === selectedTransactionTankId);
+  const selectedTransactionDispenser = dispensers.find((dispenser) => dispenser.id === selectedTransactionDispenserId);
+  const transactionTable =
+    transactionScope === 'vehicles' && selectedTransactionVehicle ? (
+      <TransactionHistoryTable
+        title={`Historial de ${selectedTransactionVehicle.plate}`}
+        subtitle={`${selectedTransactionVehicle.brand} ${selectedTransactionVehicle.model}`}
+        filters={{ vehicleId: selectedTransactionVehicle.id }}
+        variant="light"
+      />
+    ) : transactionScope === 'tanks' && selectedTransactionTank ? (
+      <TransactionHistoryTable
+        title={`Historial del tanque ${selectedTransactionTank.code}`}
+        subtitle={`${selectedTransactionTank.name} · ${selectedTransactionTank.location}`}
+        filters={{ tankId: selectedTransactionTank.id }}
+        variant="light"
+      />
+    ) : transactionScope === 'dispensers' && selectedTransactionDispenser ? (
+      <TransactionHistoryTable
+        title={`Historial del dispensador ${selectedTransactionDispenser.code}`}
+        subtitle={`${selectedTransactionDispenser.name} · ${selectedTransactionDispenser.location}`}
+        filters={{ dispenserId: selectedTransactionDispenser.id }}
+        variant="light"
+      />
+    ) : (
+      <div className="rounded-lg bg-white p-4 text-sm text-slate-500 shadow-sm">
+        No hay una entidad disponible para mostrar transacciones.
+      </div>
+    );
 
   return (
     <div className="flex flex-col gap-6 text-slate-900 font-quicksand">
@@ -656,6 +777,28 @@ export default function FleetManager() {
             </label>
 
             <label className="flex flex-col gap-2 text-sm font-medium">
+              Flota
+              <input
+                name="fleetName"
+                value={form.fleetName}
+                onChange={handleFormChange}
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400"
+                placeholder="Flota norte"
+              />
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm font-medium">
+              Corredor
+              <input
+                name="corridor"
+                value={form.corridor}
+                onChange={handleFormChange}
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400"
+                placeholder="Corredor 27"
+              />
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm font-medium">
               Asientos
               <input
                 name="seatCount"
@@ -753,6 +896,20 @@ export default function FleetManager() {
                 onChange={handleFormChange}
                 className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400"
                 placeholder="Manual 6 velocidades"
+              />
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm font-medium">
+              Galones a echar
+              <input
+                name="targetRefillGallons"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.targetRefillGallons}
+                onChange={handleFormChange}
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400"
+                placeholder="25"
               />
             </label>
 
@@ -1015,6 +1172,19 @@ export default function FleetManager() {
             </label>
 
             <label className="flex flex-col gap-2 text-sm font-medium">
+              Tipo de tanque
+              <select
+                name="storageType"
+                value={tankForm.storageType}
+                onChange={handleTankFormChange}
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-teal-400"
+              >
+                <option value="aereo">Aereo</option>
+                <option value="soterrado">Soterrado</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm font-medium">
               Capacidad litros
               <input
                 name="capacity"
@@ -1039,6 +1209,20 @@ export default function FleetManager() {
                 onChange={handleTankFormChange}
                 className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-teal-400"
                 placeholder="12000"
+              />
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm font-medium">
+              Galones a echar
+              <input
+                name="targetRefillGallons"
+                type="number"
+                min="0"
+                step="0.01"
+                value={tankForm.targetRefillGallons}
+                onChange={handleTankFormChange}
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-teal-400"
+                placeholder="500"
               />
             </label>
 
@@ -1192,6 +1376,20 @@ export default function FleetManager() {
               />
             </label>
 
+            <label className="flex flex-col gap-2 text-sm font-medium">
+              Galones a echar
+              <input
+                name="targetRefillGallons"
+                type="number"
+                min="0"
+                step="0.01"
+                value={dispenserForm.targetRefillGallons}
+                onChange={handleDispenserFormChange}
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-400"
+                placeholder="25"
+              />
+            </label>
+
             <label className="md:col-span-2 flex flex-col gap-2 text-sm font-medium">
               Identificador del dispositivo
               <input
@@ -1259,6 +1457,7 @@ export default function FleetManager() {
                 <th className="px-3 py-2 font-medium">Asientos</th>
                 <th className="px-3 py-2 font-medium">VIN</th>
                 <th className="px-3 py-2 font-medium">Sensor</th>
+                <th className="px-3 py-2 font-medium">Galones</th>
                 <th className="px-3 py-2 font-medium">Estado</th>
                 <th className="px-3 py-2 font-medium">Acciones</th>
               </tr>
@@ -1272,6 +1471,9 @@ export default function FleetManager() {
                     </p>
                     <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
                       {vehicle.plate} · {vehicle.year ?? 'S/A'} · {vehicle.version ?? 'Sin version'}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {vehicle.fleetName ?? 'Sin flota'} · {vehicle.corridor ?? 'Sin corredor'}
                     </p>
                   </td>
                   <td className="px-3 py-4">{getCompanyName(vehicle.assignedCompanyId)}</td>
@@ -1299,6 +1501,31 @@ export default function FleetManager() {
                   <td className="px-3 py-4">{vehicle.seatCount ?? 'N/D'}</td>
                   <td className="px-3 py-4">{vehicle.vin ?? 'N/D'}</td>
                   <td className="px-3 py-4">{vehicle.sensorIdentifier ?? 'Sin asignar'}</td>
+                  <td className="px-3 py-4">
+                    <div className="flex min-w-[150px] gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={vehicleGallonDrafts[vehicle.id] ?? ''}
+                        onChange={(event) =>
+                          setVehicleGallonDrafts((current) => ({
+                            ...current,
+                            [vehicle.id]: event.target.value,
+                          }))
+                        }
+                        className="w-24 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+                        placeholder="Gal"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleVehicleGallonsChange(vehicle.id)}
+                        className="rounded-xl bg-sky-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-sky-700"
+                      >
+                        OK
+                      </button>
+                    </div>
+                  </td>
                   <td className="px-3 py-4">
                     <select
                       value={vehicle.status ?? 'active'}
@@ -1346,6 +1573,7 @@ export default function FleetManager() {
                   <th className="px-3 py-2 font-medium">Volumen</th>
                   <th className="px-3 py-2 font-medium">Temp.</th>
                   <th className="px-3 py-2 font-medium">Sensor</th>
+                  <th className="px-3 py-2 font-medium">Galones</th>
                   <th className="px-3 py-2 font-medium">Estado</th>
                   <th className="px-3 py-2 font-medium">Acciones</th>
                 </tr>
@@ -1356,7 +1584,7 @@ export default function FleetManager() {
                     <td className="rounded-l-2xl px-3 py-4">
                       <p className="font-semibold text-slate-900">{tank.code}</p>
                       <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                        {tank.location} · {tank.fuelType}
+                        {tank.location} · {tank.fuelType} · {tank.storageType}
                       </p>
                     </td>
                     <td className="px-3 py-4">
@@ -1364,6 +1592,31 @@ export default function FleetManager() {
                     </td>
                     <td className="px-3 py-4">{tank.temperature?.toFixed(1) ?? 'N/D'}</td>
                     <td className="px-3 py-4">{tank.sensorIdentifier ?? 'Sin asignar'}</td>
+                    <td className="px-3 py-4">
+                      <div className="flex min-w-[150px] gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={tankGallonDrafts[tank.id] ?? ''}
+                          onChange={(event) =>
+                            setTankGallonDrafts((current) => ({
+                              ...current,
+                              [tank.id]: event.target.value,
+                            }))
+                          }
+                          className="w-24 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+                          placeholder="Gal"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void handleTankGallonsChange(tank.id)}
+                          className="rounded-xl bg-teal-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-teal-700"
+                        >
+                          OK
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-3 py-4">
                       <select
                         value={tank.status}
@@ -1410,6 +1663,7 @@ export default function FleetManager() {
                   <th className="px-3 py-2 font-medium">Tanque</th>
                   <th className="px-3 py-2 font-medium">Totalizador</th>
                   <th className="px-3 py-2 font-medium">Dispositivo</th>
+                  <th className="px-3 py-2 font-medium">Galones</th>
                   <th className="px-3 py-2 font-medium">Estado</th>
                   <th className="px-3 py-2 font-medium">Acciones</th>
                 </tr>
@@ -1426,6 +1680,31 @@ export default function FleetManager() {
                     <td className="px-3 py-4">{dispenser.tankCode ?? dispenser.tankId}</td>
                     <td className="px-3 py-4">{dispenser.totalizer.toFixed(1)} L</td>
                     <td className="px-3 py-4">{dispenser.deviceIdentifier ?? 'Sin asignar'}</td>
+                    <td className="px-3 py-4">
+                      <div className="flex min-w-[150px] gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={dispenserGallonDrafts[dispenser.id] ?? ''}
+                          onChange={(event) =>
+                            setDispenserGallonDrafts((current) => ({
+                              ...current,
+                              [dispenser.id]: event.target.value,
+                            }))
+                          }
+                          className="w-24 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+                          placeholder="Gal"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void handleDispenserGallonsChange(dispenser.id)}
+                          className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-amber-700"
+                        >
+                          OK
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-3 py-4">
                       <select
                         value={dispenser.status}
@@ -1454,6 +1733,86 @@ export default function FleetManager() {
           </div>
         </Card>
       </div>
+
+      <Card className="border-0 bg-white/90 shadow-xl shadow-slate-300/20">
+        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.28em] text-cyan-700">
+              Historial de transacciones
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold">Vehículos, tanques y dispensadores</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Selecciona una entidad para ver sus despachos por última semana, mes, año o cinco años.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { key: 'vehicles', label: 'Vehículos' },
+              { key: 'tanks', label: 'Tanques' },
+              { key: 'dispensers', label: 'Dispensadores' },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setTransactionScope(item.key as 'vehicles' | 'tanks' | 'dispensers')}
+                className={
+                  transactionScope === item.key
+                    ? 'rounded-2xl bg-cyan-700 px-4 py-2 text-sm font-semibold text-white'
+                    : 'rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-cyan-300 hover:text-cyan-700'
+                }
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-5">
+          {transactionScope === 'vehicles' ? (
+            <select
+              value={selectedTransactionVehicleId ?? ''}
+              onChange={(event) => setSelectedTransactionVehicleId(Number(event.target.value) || null)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-cyan-400 md:max-w-md"
+            >
+              {vehicles.map((vehicle) => (
+                <option key={vehicle.id} value={vehicle.id}>
+                  {vehicle.plate} · {vehicle.brand} {vehicle.model}
+                </option>
+              ))}
+            </select>
+          ) : null}
+
+          {transactionScope === 'tanks' ? (
+            <select
+              value={selectedTransactionTankId ?? ''}
+              onChange={(event) => setSelectedTransactionTankId(Number(event.target.value) || null)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-cyan-400 md:max-w-md"
+            >
+              {tanks.map((tank) => (
+                <option key={tank.id} value={tank.id}>
+                  {tank.code} · {tank.location}
+                </option>
+              ))}
+            </select>
+          ) : null}
+
+          {transactionScope === 'dispensers' ? (
+            <select
+              value={selectedTransactionDispenserId ?? ''}
+              onChange={(event) => setSelectedTransactionDispenserId(Number(event.target.value) || null)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-cyan-400 md:max-w-md"
+            >
+              {dispensers.map((dispenser) => (
+                <option key={dispenser.id} value={dispenser.id}>
+                  {dispenser.code} · {dispenser.location}
+                </option>
+              ))}
+            </select>
+          ) : null}
+        </div>
+
+        {transactionTable}
+      </Card>
     </div>
   );
 }

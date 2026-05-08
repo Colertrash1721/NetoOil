@@ -26,6 +26,13 @@ class SensorDevice(Base):
     id = Column(Integer, primary_key=True, index=True)
     identifier = Column(String(255), nullable=False, unique=True, index=True)
     topic = Column(String(255), nullable=False)
+    sensorType = Column(String(60), nullable=False, default="ble")
+    pairedVehicleId = Column(Integer, ForeignKey("vehicles.id"), nullable=True, index=True)
+    pairingStatus = Column(String(40), nullable=False, default="paired", index=True)
+    batteryLevel = Column(Float, nullable=True)
+    remoteConfig = Column(JSON, nullable=True)
+    tamperStatus = Column(String(40), nullable=False, default="normal", index=True)
+    cachedEvents = Column(Integer, nullable=False, default=0)
     firstSeenAt = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
     lastSeenAt = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)
 

@@ -5,7 +5,7 @@ export type UserApi = {
   username: string;
   email: string;
   status: 'pending' | 'accepted' | 'rejected';
-  companyRole: 'admin' | 'viewer';
+  companyRole: 'superadmin' | 'admin' | 'user';
   creationDate: string;
   lastConnection: string | null;
   companyId: number;

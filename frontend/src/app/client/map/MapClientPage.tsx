@@ -148,6 +148,7 @@ function buildFallbackTanks(): TankApi[] {
       name: `Tanque Demo ${unit.toString().padStart(2, '0')}`,
       location: `Patio operativo ${unit.toString().padStart(2, '0')}`,
       fuelType: 'diesel',
+      storageType: unit % 2 === 0 ? 'soterrado' : 'aereo',
       capacity,
       currentVolume: Math.round(capacity * (fillPercent / 100)),
       temperature: 27 + (unit % 5),
@@ -174,6 +175,15 @@ function buildFallbackDispensers(): DispenserApi[] {
       tankId: 9000 + unit,
       tankCode: `TNK-${unit.toString().padStart(2, '0')}`,
       totalizer: 25000 + unit * 875,
+      supportedIdentificationMethods: 'rfid,mifare,anpr,ble',
+      fallbackIdentificationMethod: 'anpr',
+      productConfigurations: [
+        { hoseNumber: 1, product: 'diesel' },
+        { hoseNumber: 2, product: 'gasolina' },
+        { hoseNumber: 3, product: 'diesel' },
+        { hoseNumber: 4, product: 'gasolina' },
+      ],
+      hoseCount: 4,
       status: unit % 5 === 0 ? 'maintenance' : 'online',
       deviceIdentifier: `DISP-DEMO-${unit.toString().padStart(2, '0')}`,
       assignedCompanyId: 1,
@@ -305,22 +315,8 @@ export default function ClientMapPage() {
     void loadOperationalAssets();
   }, []);
 
-  if (!busSelected) {
-    return (
-      <section className="rounded-[30px] border border-dashed border-white/10 bg-white/5 p-8 text-slate-200 backdrop-blur-sm">
-        <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Mapa</p>
-        <h2 className="mt-2 text-2xl font-semibold text-white">No hay ubicaciones para mostrar</h2>
-        <p className="mt-3 text-sm text-slate-300">
-          No existen vehiculos con datos disponibles en la base de datos.
-        </p>
-      </section>
-    );
-  }
-
   const activeBus = busSelected;
-  const location = activeBus.location;
-  const telemetry = activeBus.telemetry;
-  const events = activeBus.events;
+  const location = activeBus?.location ?? { lat: 18.4861, lng: -69.9312, label: 'Sin ubicacion registrada' };
 
   const center = useMemo<[number, number]>(() => {
     return [location.lat, location.lng];
@@ -359,6 +355,21 @@ export default function ClientMapPage() {
 
     return [...vehicleMarkers, ...tankMarkers, ...dispenserMarkers];
   }, [buses, center, dataSource, dispensers, tanks]);
+
+  if (!activeBus) {
+    return (
+      <section className="rounded-[30px] border border-dashed border-white/10 bg-white/5 p-8 text-slate-200 backdrop-blur-sm">
+        <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Mapa</p>
+        <h2 className="mt-2 text-2xl font-semibold text-white">No hay ubicaciones para mostrar</h2>
+        <p className="mt-3 text-sm text-slate-300">
+          No existen vehiculos con datos disponibles en la base de datos.
+        </p>
+      </section>
+    );
+  }
+
+  const telemetry = activeBus.telemetry;
+  const events = activeBus.events;
 
   return (
     <div className="flex flex-col gap-6">

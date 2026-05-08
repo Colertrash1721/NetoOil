@@ -27,8 +27,10 @@ class InstitutionalTank(Base):
     name = Column(String(140), nullable=False)
     location = Column(String(180), nullable=False)
     fuelType = Column(String(60), nullable=False, default="diesel")
+    storageType = Column(String(40), nullable=False, default="aereo")
     capacity = Column(Float, nullable=False)
     currentVolume = Column(Float, nullable=False, default=0)
+    targetRefillGallons = Column(Float, nullable=True)
     temperature = Column(Float, nullable=True)
     density = Column(Float, nullable=True)
     status = Column(String(40), nullable=False, default="operational", index=True)
@@ -70,6 +72,11 @@ class Dispenser(Base):
     location = Column(String(180), nullable=False)
     tankId = Column(Integer, ForeignKey("institutional_tanks.id"), nullable=False, index=True)
     totalizer = Column(Float, nullable=False, default=0)
+    targetRefillGallons = Column(Float, nullable=True)
+    supportedIdentificationMethods = Column(String(160), nullable=False, default="rfid,mifare,anpr,ble")
+    fallbackIdentificationMethod = Column(String(40), nullable=False, default="anpr")
+    productConfigurations = Column(JSON, nullable=True)
+    hoseCount = Column(Integer, nullable=False, default=1)
     status = Column(String(40), nullable=False, default="online", index=True)
     deviceIdentifier = Column(String(100), unique=True, nullable=True, index=True)
     assignedCompanyId = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
@@ -124,6 +131,14 @@ class RefuelingTransaction(Base):
     dispenserId = Column(Integer, ForeignKey("dispensers.id"), nullable=False, index=True)
     tankId = Column(Integer, ForeignKey("institutional_tanks.id"), nullable=False, index=True)
     policyId = Column(Integer, ForeignKey("fuel_policies.id"), nullable=True, index=True)
+    operatorName = Column(String(160), nullable=True)
+    authorizationNumber = Column(String(100), nullable=True, index=True)
+    productType = Column(String(60), nullable=False, default="diesel", index=True)
+    hoseNumber = Column(Integer, nullable=False, default=1)
+    flowMeterStart = Column(Float, nullable=True)
+    flowMeterEnd = Column(Float, nullable=True)
+    flowMeterAccuracyPercent = Column(Float, nullable=True)
+    identificationStatus = Column(String(40), nullable=False, default="valid")
     requestedVolume = Column(Float, nullable=True)
     authorizedVolume = Column(Float, nullable=True)
     dispensedVolume = Column(Float, nullable=False, default=0)
@@ -150,6 +165,9 @@ class AlertThreshold(Base):
     maxValue = Column(Float, nullable=True)
     variationLimit = Column(Float, nullable=True)
     notificationEmail = Column(String(255), nullable=True)
+    notificationChannels = Column(String(120), nullable=False, default="internal,email")
+    smsNumber = Column(String(50), nullable=True)
+    webhookUrl = Column(String(255), nullable=True)
     enabled = Column(Boolean, nullable=False, default=True, index=True)
     createdAt = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)
 
@@ -179,3 +197,41 @@ class DeviceActionLog(Base):
     payload = Column(JSON, nullable=True)
     message = Column(Text, nullable=True)
     createdAt = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)
+
+
+class CustomRole(Base):
+    __tablename__ = "custom_roles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), nullable=False, index=True)
+    description = Column(String(255), nullable=True)
+    assignedCompanyId = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
+    permissions = Column(JSON, nullable=False, default=list)
+    status = Column(String(40), nullable=False, default="active", index=True)
+    createdAt = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)
+
+
+class WebhookEndpoint(Base):
+    __tablename__ = "webhook_endpoints"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), nullable=False)
+    url = Column(String(255), nullable=False)
+    eventTypes = Column(String(255), nullable=False, default="alert.created,transaction.created")
+    retryCount = Column(Integer, nullable=False, default=3)
+    secret = Column(String(120), nullable=True)
+    status = Column(String(40), nullable=False, default="active", index=True)
+    createdAt = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)
+
+
+class WebhookDeliveryLog(Base):
+    __tablename__ = "webhook_delivery_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    webhookId = Column(Integer, ForeignKey("webhook_endpoints.id"), nullable=False, index=True)
+    eventType = Column(String(120), nullable=False, index=True)
+    payload = Column(JSON, nullable=True)
+    attempts = Column(Integer, nullable=False, default=1)
+    status = Column(String(40), nullable=False, default="delivered", index=True)
+    response = Column(String(255), nullable=True)
+    deliveredAt = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)

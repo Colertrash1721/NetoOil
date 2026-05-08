@@ -60,7 +60,9 @@ function statusClass(status: UserApi['status']) {
 }
 
 function companyRoleLabel(role: UserApi['companyRole']) {
-  return role === 'admin' ? 'Administrador' : 'Solo lectura';
+  if (role === 'superadmin') return 'Superadmin';
+  if (role === 'admin') return 'Admin empresa';
+  return 'Usuario';
 }
 
 export default function UsersPage() {
@@ -244,8 +246,9 @@ export default function UsersPage() {
                         onChange={(event) => void handleRoleChange(user.id, event.target.value as UserApi['companyRole'])}
                         className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-cyan-400 disabled:bg-slate-100"
                       >
-                        <option value="viewer">{companyRoleLabel('viewer')}</option>
+                        <option value="user">{companyRoleLabel('user')}</option>
                         <option value="admin">{companyRoleLabel('admin')}</option>
+                        <option value="superadmin">{companyRoleLabel('superadmin')}</option>
                       </select>
                     </td>
                     <td className="px-4 py-3">

@@ -11,6 +11,8 @@ class VehicleBase(BaseModel):
     version: str | None = None
     vin: str | None = None
     color: str | None = None
+    fleetName: str | None = None
+    corridor: str | None = None
     seatCount: int | None = None
     engineType: str | None = None
     engineDisplacement: str | None = None
@@ -19,8 +21,13 @@ class VehicleBase(BaseModel):
     maxTorque: str | None = None
     fuelConsumption: str | None = None
     tankCapacity: str | None = None
+    targetRefillGallons: float | None = Field(default=None, ge=0)
     transmission: str | None = None
     sensorIdentifier: str | None = None
+    rfidTag: str | None = None
+    mifareCard: str | None = None
+    anprPlate: str | None = None
+    bleIdentifier: str | None = None
     status: str = "active"
     assignedCompanyId: int
     assignedDriverId: int | None = None
@@ -38,6 +45,8 @@ class VehicleUpdate(BaseModel):
     version: str | None = None
     vin: str | None = None
     color: str | None = None
+    fleetName: str | None = None
+    corridor: str | None = None
     seatCount: int | None = None
     engineType: str | None = None
     engineDisplacement: str | None = None
@@ -46,11 +55,20 @@ class VehicleUpdate(BaseModel):
     maxTorque: str | None = None
     fuelConsumption: str | None = None
     tankCapacity: str | None = None
+    targetRefillGallons: float | None = Field(default=None, ge=0)
     transmission: str | None = None
     sensorIdentifier: str | None = None
+    rfidTag: str | None = None
+    mifareCard: str | None = None
+    anprPlate: str | None = None
+    bleIdentifier: str | None = None
     status: str | None = None
     assignedCompanyId: int | None = None
     assignedDriverId: int | None = None
+
+
+class TargetRefillGallonsUpdate(BaseModel):
+    targetRefillGallons: float | None = Field(default=None, ge=0)
 
 
 class VehicleTelemetryCreate(BaseModel):

@@ -1,8 +1,10 @@
 import { DispenserApi } from '@/services/fuel/service';
+import { TransactionHistoryTable } from '@/components/fuel/transactionHistoryTable';
 import { volume } from './format';
 
 export function DispenserDetail({ dispenser }: { dispenser: DispenserApi }) {
   return (
+    <>
     <article className="rounded-[30px] border border-white/10 bg-white/6 p-5 backdrop-blur-sm">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
@@ -34,7 +36,19 @@ export function DispenserDetail({ dispenser }: { dispenser: DispenserApi }) {
             {dispenser.lastTransactionAt ? new Date(dispenser.lastTransactionAt).toLocaleDateString('es-DO') : 'N/D'}
           </p>
         </div>
+        <div className="rounded-2xl bg-slate-950/35 p-4 md:col-span-4">
+          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Galones a echar</p>
+          <p className="mt-2 text-xl font-semibold text-white">
+            {dispenser.targetRefillGallons != null ? `${dispenser.targetRefillGallons.toFixed(2)} gal` : 'N/D'}
+          </p>
+        </div>
       </div>
     </article>
+    <TransactionHistoryTable
+      title={`Historial del dispensador ${dispenser.code}`}
+      subtitle="Despachos asociados al dispensador seleccionado."
+      filters={{ dispenserId: dispenser.id }}
+    />
+    </>
   );
 }

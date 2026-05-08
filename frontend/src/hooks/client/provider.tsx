@@ -74,6 +74,7 @@ function mapBackendVehicle(detail: VehicleDetailApi): BusItem {
     route: detail.assignedCompanyName ?? 'Sin ruta registrada',
     driver: 'Sin chofer registrado',
     status: mapStatus(detail.status),
+    targetRefillGallons: detail.targetRefillGallons,
     location: {
       lat: detail.lastLatitude ?? 18.4861,
       lng: detail.lastLongitude ?? -69.9312,
@@ -133,6 +134,7 @@ function buildDemoFleet(): BusItem[] {
       route: routes[unit % routes.length],
       driver: `Chofer Demo ${unit.toString().padStart(2, '0')}`,
       status,
+      targetRefillGallons: 18 + (unit % 12),
       location: {
         lat: 18.4861 + (unit % 12) * 0.012,
         lng: -69.9312 - (unit % 12) * 0.011,

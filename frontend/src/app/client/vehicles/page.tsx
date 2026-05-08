@@ -1,6 +1,7 @@
 'use client';
 
 import { useBusContext } from '@/hooks/client/provider';
+import { TransactionHistoryTable } from '@/components/fuel/transactionHistoryTable';
 import {
   formatRelativeHour,
   getFuelDelta,
@@ -136,12 +137,24 @@ export default function ClientDashboardPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-5">
         <MetricCard title="Nivel real" value={`${currentDiesel.toFixed(1)}%`} detail="Lectura más reciente del tanque" icon="bx bx-droplet" />
         <MetricCard title="Modelo estimado" value={`${currentEstimated.toFixed(1)}%`} detail={`Desvío actual de ${delta.toFixed(1)}%`} icon="bx bx-line-chart" />
         <MetricCard title="Consumo del turno" value={`${consumption.toFixed(1)} pts`} detail={`Promedio del día ${averageDiesel.toFixed(1)}%`} icon="bx bx-trending-down" />
         <MetricCard title="Velocidad" value={`${bus.telemetry.speed.toFixed(0)} km/h`} detail={`Estado operativo: ${bus.status}`} icon="bx bx-gauge" />
+        <MetricCard
+          title="Galones a echar"
+          value={bus.targetRefillGallons != null ? `${bus.targetRefillGallons.toFixed(2)} gal` : 'N/D'}
+          detail="Configuración de despacho de la unidad"
+          icon="bx bx-gas-pump"
+        />
       </section>
+
+      <TransactionHistoryTable
+        title={`Historial de ${bus.plate}`}
+        subtitle="Despachos registrados para el vehículo seleccionado."
+        filters={{ vehicleId: bus.id }}
+      />
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.9fr)]">
         <article className="rounded-[30px] border border-white/10 bg-white/6 p-5 backdrop-blur-sm">

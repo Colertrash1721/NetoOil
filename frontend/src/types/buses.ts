@@ -37,6 +37,7 @@ export type BusItem = {
   route: string;
   driver: string;
   status: "En ruta" | "En terminal" | "Alerta";
+  targetRefillGallons?: number | null;
   location: BusLocation;
   DieselLevel: LevelPoint[];
   EstimatedLevel: LevelPoint[];

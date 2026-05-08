@@ -1,8 +1,10 @@
 import { TankApi } from '@/services/fuel/service';
+import { TransactionHistoryTable } from '@/components/fuel/transactionHistoryTable';
 import { volume } from './format';
 
 export function TankDetail({ tank }: { tank: TankApi }) {
   return (
+    <>
     <article className="rounded-[30px] border border-white/10 bg-white/6 p-5 backdrop-blur-sm">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
@@ -32,6 +34,12 @@ export function TankDetail({ tank }: { tank: TankApi }) {
           <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Densidad</p>
           <p className="mt-2 text-xl font-semibold text-white">{tank.density?.toFixed(3) ?? 'N/D'}</p>
         </div>
+        <div className="rounded-2xl bg-slate-950/35 p-4 md:col-span-4">
+          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Galones a echar</p>
+          <p className="mt-2 text-xl font-semibold text-white">
+            {tank.targetRefillGallons != null ? `${tank.targetRefillGallons.toFixed(2)} gal` : 'N/D'}
+          </p>
+        </div>
       </div>
 
       <div className="mt-5">
@@ -44,5 +52,11 @@ export function TankDetail({ tank }: { tank: TankApi }) {
         </div>
       </div>
     </article>
+    <TransactionHistoryTable
+      title={`Historial del tanque ${tank.code}`}
+      subtitle="Despachos asociados al tanque seleccionado."
+      filters={{ tankId: tank.id }}
+    />
+    </>
   );
 }

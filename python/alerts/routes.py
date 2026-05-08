@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from alerts.schemas import AlertRead
-from alerts.service import read_alerts_service
+from alerts.service import read_alerts_service, read_notification_logs_service
 from auth.dependencies import get_current_auth
 from auth.security import AuthContext
 from db.database import get_db
@@ -20,3 +20,11 @@ def get_alerts(
 ):
     return read_alerts_service(db, auth, vehicle_id=vehicleId, limit=limit)
 
+
+@router.get("/notifications", response_model=list[dict])
+def get_notification_logs(
+    limit: int = Query(default=100, ge=1, le=1000),
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+):
+    return read_notification_logs_service(db, auth, limit=limit)

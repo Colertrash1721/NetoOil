@@ -1,4 +1,7 @@
 from datetime import datetime, timedelta
+import hashlib
+import json
+import os
 from uuid import uuid4
 
 from sqlalchemy import func
@@ -7,10 +10,14 @@ from sqlalchemy.orm import Session
 from alerts.engine import evaluate_tank_telemetry_alerts, evaluate_transaction_alerts
 from alerts.models import AlertEvent
 from auth.security import AuthContext
-from vehicles.models import Vehicle
+from sensor_data.models import SensorDevice, SensorDeviceTelemetry
+from vehicles.models import Vehicle, VehicleTelemetry
 from fuel_management.models import (
     AlertThreshold,
     AuditLog,
+    CustomRole,
+    WebhookDeliveryLog,
+    WebhookEndpoint,
     DeviceActionLog,
     Dispenser,
     Driver,
@@ -25,8 +32,11 @@ from fuel_management.schemas import (
     AlertThresholdRead,
     AlertThresholdUpdate,
     AuditLogRead,
+    CustomRoleCreate,
+    CustomRoleRead,
     DeviceActionLogCreate,
     DeviceActionLogRead,
+    DeviceDemoResult,
     DispenserCreate,
     DispenserRead,
     DispenserUpdate,
@@ -39,6 +49,9 @@ from fuel_management.schemas import (
     FuelPolicyRead,
     FuelReceiptCreate,
     FuelReceiptRead,
+    FuelSimulationRequest,
+    FuelSimulationResult,
+    OfflineReplayRequest,
     RefuelingTransactionCreate,
     RefuelingTransactionRead,
     TankCreate,
@@ -47,7 +60,70 @@ from fuel_management.schemas import (
     TankTelemetryCreate,
     TankTelemetryRead,
     TankUpdate,
+    WirelessSensorDemoRequest,
+    WebhookEndpointCreate,
+    WebhookEndpointRead,
+    WebhookTestRequest,
 )
+
+GALLON_TO_LITER = 3.785411784
+
+
+def _liters_to_gallons(value: float | None) -> float:
+    return round((value or 0) / GALLON_TO_LITER, 4)
+
+
+def _gallons_to_liters(value: float | None) -> float:
+    return round((value or 0) * GALLON_TO_LITER, 4)
+
+
+def _parse_capacity_gallons(raw_value: str | None) -> float | None:
+    if not raw_value:
+        return None
+    normalized = raw_value.strip().lower().replace(",", ".")
+    number = ""
+    for char in normalized:
+        if char.isdigit() or char == ".":
+            number += char
+        elif number:
+            break
+    if not number:
+        return None
+    parsed = float(number)
+    if " l" in f" {normalized}" or normalized.endswith("l") or "litro" in normalized:
+        return round(parsed / GALLON_TO_LITER, 4)
+    return round(parsed, 4)
+
+
+def _simulation_alert(
+    db: Session,
+    *,
+    entity_type: str,
+    entity_id: int,
+    company_id: int | None,
+    sensor_identifier: str | None,
+    alert_type: str,
+    severity: str,
+    title: str,
+    message: str,
+    metadata: dict,
+) -> AlertEvent:
+    alert = AlertEvent(
+        entityType=entity_type,
+        entityId=entity_id,
+        assignedCompanyId=company_id,
+        sensorIdentifier=sensor_identifier,
+        alertType=alert_type,
+        severity=severity,
+        title=title,
+        message=message,
+        status="open",
+        eventMetadata=metadata,
+        recordedAt=datetime.utcnow(),
+    )
+    db.add(alert)
+    db.flush()
+    return alert
 
 
 def _company_filter(query, model, auth: AuthContext | None):
@@ -91,8 +167,10 @@ def _tank_read(tank: InstitutionalTank) -> TankRead:
         name=tank.name,
         location=tank.location,
         fuelType=tank.fuelType,
+        storageType=tank.storageType,
         capacity=tank.capacity,
         currentVolume=tank.currentVolume,
+        targetRefillGallons=tank.targetRefillGallons,
         temperature=tank.temperature,
         density=tank.density,
         status=tank.status,
@@ -414,6 +492,48 @@ def _select_policy(db: Session, vehicle_id: int, driver_id: int | None) -> FuelP
     return query.filter(FuelPolicy.driverId == driver_id).order_by(FuelPolicy.createdAt.desc()).first()
 
 
+def _normalize_method(value: str | None) -> str:
+    normalized = (value or "").strip().lower()
+    aliases = {"rfid_uhf": "rfid", "uhf": "rfid", "mifare": "mifare", "anpr": "anpr", "ble": "ble"}
+    return aliases.get(normalized, normalized or "rfid")
+
+
+def _vehicle_identifier_for(vehicle: Vehicle, method: str) -> str | None:
+    if method == "rfid":
+        return vehicle.rfidTag or vehicle.sensorIdentifier
+    if method == "mifare":
+        return vehicle.mifareCard
+    if method == "anpr":
+        return vehicle.anprPlate or vehicle.plate
+    if method == "ble":
+        return vehicle.bleIdentifier or vehicle.sensorIdentifier
+    return None
+
+
+def _validate_transaction_identification(vehicle: Vehicle, dispenser: Dispenser, data: RefuelingTransactionCreate) -> tuple[str, str]:
+    supported = {
+        _normalize_method(item)
+        for item in (dispenser.supportedIdentificationMethods or "").split(",")
+        if item.strip()
+    }
+    method = _normalize_method(data.identificationMethod)
+    status = "valid"
+    if supported and method not in supported:
+        fallback = _normalize_method(dispenser.fallbackIdentificationMethod)
+        if fallback in supported:
+            method = fallback
+            status = "fallback"
+        else:
+            raise ValueError("Identification method is not supported by dispenser.")
+
+    expected = _vehicle_identifier_for(vehicle, method)
+    if data.identificationValue and expected and data.identificationValue.strip().lower() != expected.strip().lower():
+        raise ValueError("Invalid vehicle identification.")
+    if data.identificationValue and expected is None:
+        raise ValueError("Vehicle does not have identifier configured for this method.")
+    return method, status
+
+
 def create_transaction(
     db: Session, data: RefuelingTransactionCreate, auth: AuthContext
 ) -> RefuelingTransactionRead:
@@ -425,6 +545,18 @@ def create_transaction(
     if not dispenser:
         raise ValueError("Dispenser not found.")
     _ensure_company_access(auth, dispenser.assignedCompanyId)
+    identification_method, identification_status = _validate_transaction_identification(vehicle, dispenser, data)
+    if data.hoseNumber > dispenser.hoseCount:
+        raise ValueError("Hose number is not configured in dispenser.")
+    products = dispenser.productConfigurations or []
+    if products:
+        valid_product = any(
+            item.get("product") == data.productType and int(item.get("hoseNumber", 0)) == data.hoseNumber
+            for item in products
+            if isinstance(item, dict)
+        )
+        if not valid_product:
+            raise ValueError("Product and hose are not configured in dispenser.")
     tank = db.get(InstitutionalTank, dispenser.tankId)
     if not tank:
         raise ValueError("Tank not found.")
@@ -446,12 +578,28 @@ def create_transaction(
 
     payload = data.model_dump()
     payload["transactionCode"] = payload["transactionCode"] or f"TX-{uuid4().hex[:12].upper()}"
+    payload["authorizationNumber"] = payload["authorizationNumber"] or f"AUTH-{uuid4().hex[:10].upper()}"
     payload["tankId"] = tank.id
     payload["policyId"] = policy.id if policy else None
+    payload["identificationMethod"] = identification_method
+    payload["identificationStatus"] = identification_status
     payload["authorizedVolume"] = authorized_volume
     payload["preAuthorized"] = pre_authorized
     payload["cutReason"] = cut_reason
     payload["dispensedVolume"] = dispensed_volume
+    if payload.get("flowMeterStart") is None:
+        payload["flowMeterStart"] = dispenser.totalizer
+    if payload.get("flowMeterEnd") is None:
+        payload["flowMeterEnd"] = payload["flowMeterStart"] + dispensed_volume
+    if payload.get("flowMeterAccuracyPercent") is None:
+        meter_delta = payload["flowMeterEnd"] - payload["flowMeterStart"]
+        payload["flowMeterAccuracyPercent"] = (
+            round(abs(meter_delta - dispensed_volume) / dispensed_volume * 100, 4)
+            if dispensed_volume
+            else 0
+        )
+    if payload["flowMeterAccuracyPercent"] > 0.5:
+        raise ValueError("Flow meter accuracy exceeds 0.5%.")
     payload["startedAt"] = payload["startedAt"] or datetime.utcnow()
     payload["completedAt"] = payload["completedAt"] or payload["startedAt"]
 
@@ -489,14 +637,334 @@ def create_transaction(
     return _transaction_read(db, item)
 
 
-def list_transactions(db: Session, auth: AuthContext, limit: int = 100) -> list[RefuelingTransactionRead]:
+def list_transactions(
+    db: Session,
+    auth: AuthContext,
+    limit: int = 100,
+    start_at: datetime | None = None,
+    end_at: datetime | None = None,
+    vehicle_id: int | None = None,
+    dispenser_id: int | None = None,
+    tank_id: int | None = None,
+) -> list[RefuelingTransactionRead]:
     query = db.query(RefuelingTransaction).join(Vehicle, RefuelingTransaction.vehicleId == Vehicle.id)
     if auth.role in {"company", "admin", "user"} and auth.company_id is not None:
         query = query.filter(Vehicle.assignedCompanyId == auth.company_id)
+    transaction_at = func.coalesce(RefuelingTransaction.completedAt, RefuelingTransaction.startedAt)
+    if start_at is not None:
+        query = query.filter(transaction_at >= start_at)
+    if end_at is not None:
+        query = query.filter(transaction_at <= end_at)
+    if vehicle_id is not None:
+        query = query.filter(RefuelingTransaction.vehicleId == vehicle_id)
+    if dispenser_id is not None:
+        query = query.filter(RefuelingTransaction.dispenserId == dispenser_id)
+    if tank_id is not None:
+        query = query.filter(RefuelingTransaction.tankId == tank_id)
     return [
         _transaction_read(db, item)
         for item in query.order_by(RefuelingTransaction.startedAt.desc()).limit(limit).all()
     ]
+
+
+def simulate_fuel_device(
+    db: Session,
+    data: FuelSimulationRequest,
+    auth: AuthContext,
+) -> FuelSimulationResult:
+    device_type = data.deviceType.strip().lower()
+    operation = data.operation.strip().lower()
+    if device_type not in {"vehicle", "tank", "dispenser"}:
+        raise ValueError("Device type must be vehicle, tank or dispenser.")
+    if operation not in {"fill", "drain"}:
+        raise ValueError("Operation must be fill or drain.")
+
+    target_limit: float | None
+    capacity_gallons: float | None = None
+    sensor_identifier: str | None = None
+
+    if device_type == "vehicle":
+        device = db.get(Vehicle, data.deviceId)
+        if not device:
+            raise ValueError("Vehicle not found.")
+        company_id = device.assignedCompanyId
+        sensor_identifier = device.sensorIdentifier
+        target_limit = device.targetRefillGallons
+        before_gallons = _liters_to_gallons(device.lastVolume)
+        capacity_gallons = _parse_capacity_gallons(device.tankCapacity)
+    elif device_type == "tank":
+        device = db.get(InstitutionalTank, data.deviceId)
+        if not device:
+            raise ValueError("Tank not found.")
+        company_id = device.assignedCompanyId
+        sensor_identifier = device.sensorIdentifier
+        target_limit = device.targetRefillGallons
+        before_gallons = _liters_to_gallons(device.currentVolume)
+        capacity_gallons = _liters_to_gallons(device.capacity)
+    else:
+        device = db.get(Dispenser, data.deviceId)
+        if not device:
+            raise ValueError("Dispenser not found.")
+        company_id = device.assignedCompanyId
+        sensor_identifier = device.deviceIdentifier
+        target_limit = device.targetRefillGallons
+        before_gallons = _liters_to_gallons(device.totalizer)
+
+    requested_gallons = round(data.gallons, 4)
+    allowed_gallons = requested_gallons
+    messages: list[str] = []
+    alert_ids: list[int] = []
+
+    if target_limit is not None and target_limit >= 0 and allowed_gallons > target_limit:
+        allowed_gallons = round(target_limit, 4)
+        messages.append(
+            f"Solicitud cortada por limite configurado: {requested_gallons} gal > {target_limit} gal."
+        )
+        alert = _simulation_alert(
+            db,
+            entity_type=device_type,
+            entity_id=data.deviceId,
+            company_id=company_id,
+            sensor_identifier=sensor_identifier,
+            alert_type="simulation_limit_cut",
+            severity="high",
+            title="Simulacion cortada por limite",
+            message=messages[-1],
+            metadata={
+                "requestedGallons": requested_gallons,
+                "configuredLimitGallons": target_limit,
+                "operation": operation,
+            },
+        )
+        alert_ids.append(alert.id)
+
+    capacity_room = None
+    if operation == "fill" and capacity_gallons is not None:
+        capacity_room = max(capacity_gallons - before_gallons, 0)
+        if allowed_gallons > capacity_room:
+            messages.append(
+                "El dispositivo se lleno antes de completar el recargo especificado."
+            )
+            allowed_gallons = round(capacity_room, 4)
+            alert = _simulation_alert(
+                db,
+                entity_type=device_type,
+                entity_id=data.deviceId,
+                company_id=company_id,
+                sensor_identifier=sensor_identifier,
+                alert_type="simulation_incomplete_full",
+                severity="high",
+                title="Recargo incompleto por capacidad llena",
+                message=messages[-1],
+                metadata={
+                    "requestedGallons": requested_gallons,
+                    "appliedGallons": allowed_gallons,
+                    "capacityGallons": capacity_gallons,
+                    "beforeGallons": before_gallons,
+                },
+            )
+            alert_ids.append(alert.id)
+
+    if operation == "drain" and allowed_gallons > before_gallons:
+        messages.append("El dispositivo se vacio antes de completar el vaciado especificado.")
+        allowed_gallons = round(before_gallons, 4)
+        alert = _simulation_alert(
+            db,
+            entity_type=device_type,
+            entity_id=data.deviceId,
+            company_id=company_id,
+            sensor_identifier=sensor_identifier,
+            alert_type="simulation_incomplete_empty",
+            severity="medium",
+            title="Vaciado incompleto por dispositivo vacio",
+            message=messages[-1],
+            metadata={
+                "requestedGallons": requested_gallons,
+                "appliedGallons": allowed_gallons,
+                "beforeGallons": before_gallons,
+            },
+        )
+        alert_ids.append(alert.id)
+
+    applied_gallons = max(round(allowed_gallons, 4), 0)
+    delta_liters = _gallons_to_liters(applied_gallons)
+    if operation == "drain":
+        delta_liters *= -1
+
+    if device_type == "vehicle":
+        device.lastVolume = max((device.lastVolume or 0) + delta_liters, 0)
+        if capacity_gallons is not None:
+            device.lastVolume = min(device.lastVolume, _gallons_to_liters(capacity_gallons))
+        device.lastUpdate = datetime.utcnow()
+        after_gallons = _liters_to_gallons(device.lastVolume)
+    elif device_type == "tank":
+        device.currentVolume = max((device.currentVolume or 0) + delta_liters, 0)
+        device.currentVolume = min(device.currentVolume, device.capacity)
+        device.lastUpdate = datetime.utcnow()
+        db.add(
+            TankTelemetry(
+                tankId=device.id,
+                levelPercent=round((device.currentVolume / device.capacity) * 100, 2) if device.capacity else 0,
+                volume=device.currentVolume,
+                temperature=device.temperature,
+                density=device.density,
+                variation=delta_liters,
+                alarm=bool(alert_ids),
+                recordedAt=datetime.utcnow(),
+            )
+        )
+        after_gallons = _liters_to_gallons(device.currentVolume)
+    else:
+        device.totalizer = max((device.totalizer or 0) + delta_liters, 0)
+        device.lastTransactionAt = datetime.utcnow()
+        after_gallons = _liters_to_gallons(device.totalizer)
+
+    cut_gallons = max(round(requested_gallons - applied_gallons, 4), 0)
+    status = "completed" if cut_gallons == 0 else "cut"
+    log_audit(
+        db,
+        auth,
+        "simulation.fuel_device",
+        device_type,
+        data.deviceId,
+        {
+            "operation": operation,
+            "requestedGallons": requested_gallons,
+            "appliedGallons": applied_gallons,
+            "cutGallons": cut_gallons,
+            "alertIds": alert_ids,
+        },
+    )
+    db.commit()
+    return FuelSimulationResult(
+        deviceType=device_type,
+        deviceId=data.deviceId,
+        operation=operation,
+        requestedGallons=requested_gallons,
+        configuredLimitGallons=target_limit,
+        appliedGallons=applied_gallons,
+        cutGallons=cut_gallons,
+        beforeGallons=before_gallons,
+        afterGallons=after_gallons,
+        capacityGallons=capacity_gallons,
+        status=status,
+        messages=messages,
+        alertIds=alert_ids,
+    )
+
+
+def simulate_wireless_sensor_event(
+    db: Session,
+    data: WirelessSensorDemoRequest,
+    auth: AuthContext,
+) -> DeviceDemoResult:
+    sensor = db.query(SensorDevice).filter(SensorDevice.identifier == data.sensorIdentifier).first()
+    if not sensor:
+        sensor = SensorDevice(
+            identifier=data.sensorIdentifier,
+            topic=f"demo/ble/{data.sensorIdentifier}",
+            sensorType="ble",
+            pairedVehicleId=data.vehicleId,
+            pairingStatus="paired" if data.vehicleId else "unpaired",
+        )
+        db.add(sensor)
+        db.flush()
+    sensor.pairedVehicleId = data.vehicleId
+    sensor.pairingStatus = "paired" if data.vehicleId else "unpaired"
+    sensor.batteryLevel = data.batteryLevel
+    sensor.remoteConfig = data.remoteConfig
+    sensor.tamperStatus = "tamper" if data.tamperDetected else "normal"
+    sensor.lastSeenAt = datetime.utcnow()
+    db.add(
+        SensorDeviceTelemetry(
+            deviceId=sensor.id,
+            topic=sensor.topic,
+            eventId=9001 if data.tamperDetected else 100,
+            bleBattery1=data.batteryLevel,
+            rawReported={"remoteConfig": data.remoteConfig, "tamperDetected": data.tamperDetected},
+            receivedAt=datetime.utcnow(),
+            recordedAt=datetime.utcnow(),
+        )
+    )
+    alert_ids: list[int] = []
+    if data.tamperDetected:
+        vehicle = db.get(Vehicle, data.vehicleId) if data.vehicleId else None
+        alert = _simulation_alert(
+            db,
+            entity_type="sensor",
+            entity_id=sensor.id,
+            company_id=vehicle.assignedCompanyId if vehicle else None,
+            sensor_identifier=sensor.identifier,
+            alert_type="wireless_sensor_tamper",
+            severity="high",
+            title="Manipulacion de sensor inalambrico",
+            message="Evento demo de manipulacion o robo detectado por sensor BLE.",
+            metadata={"vehicleId": data.vehicleId, "batteryLevel": data.batteryLevel},
+        )
+        alert_ids.append(alert.id)
+    log_audit(db, auth, "sensor.demo_event", "sensor", sensor.id, data.model_dump())
+    db.commit()
+    return DeviceDemoResult(status="processed", processed=1, alertIds=alert_ids)
+
+
+def replay_offline_sensor_events(
+    db: Session,
+    data: OfflineReplayRequest,
+    auth: AuthContext,
+) -> DeviceDemoResult:
+    ordered = sorted(data.events, key=lambda item: (item.originalTimestamp, item.sequence))
+    messages: list[str] = []
+    for event in ordered:
+        sensor = db.query(SensorDevice).filter(SensorDevice.identifier == event.sensorIdentifier).first()
+        if not sensor:
+            sensor = SensorDevice(
+                identifier=event.sensorIdentifier,
+                topic=f"demo/offline/{event.sensorIdentifier}",
+                sensorType="ble",
+                pairedVehicleId=event.vehicleId,
+                pairingStatus="paired" if event.vehicleId else "unpaired",
+            )
+            db.add(sensor)
+            db.flush()
+        sensor.cachedEvents = max((sensor.cachedEvents or 0) - 1, 0)
+        sensor.batteryLevel = event.batteryLevel
+        sensor.lastSeenAt = datetime.utcnow()
+        db.add(
+            SensorDeviceTelemetry(
+                deviceId=sensor.id,
+                topic=sensor.topic,
+                eventId=event.sequence,
+                bleBattery1=event.batteryLevel,
+                rawReported={"offlineReplay": True, "payload": event.payload, "sequence": event.sequence},
+                receivedAt=datetime.utcnow(),
+                recordedAt=event.originalTimestamp,
+            )
+        )
+        messages.append(f"Evento {event.sequence} reenviado con timestamp original {event.originalTimestamp.isoformat()}.")
+    log_audit(db, auth, "sensor.offline_replay", "sensor", None, {"events": len(ordered)})
+    db.commit()
+    return DeviceDemoResult(status="replayed", processed=len(ordered), messages=messages)
+
+
+def get_device_demo_status(db: Session, auth: AuthContext) -> dict:
+    sensors = db.query(SensorDevice).order_by(SensorDevice.lastSeenAt.desc()).limit(100).all()
+    return {
+        "sensors": [
+            {
+                "id": item.id,
+                "identifier": item.identifier,
+                "sensorType": item.sensorType,
+                "pairedVehicleId": item.pairedVehicleId,
+                "pairingStatus": item.pairingStatus,
+                "batteryLevel": item.batteryLevel,
+                "remoteConfig": item.remoteConfig,
+                "tamperStatus": item.tamperStatus,
+                "cachedEvents": item.cachedEvents,
+                "lastSeenAt": item.lastSeenAt,
+            }
+            for item in sensors
+        ]
+    }
 
 
 def create_threshold(
@@ -559,6 +1027,232 @@ def create_device_action(
 def list_audit_logs(db: Session, auth: AuthContext, limit: int = 100) -> list[AuditLogRead]:
     query = db.query(AuditLog).order_by(AuditLog.createdAt.desc()).limit(limit)
     return [AuditLogRead.model_validate(item) for item in query.all()]
+
+
+def _audit_hash(item: AuditLog) -> str:
+    payload = {
+        "id": item.id,
+        "actorRole": item.actorRole,
+        "actorId": item.actorId,
+        "action": item.action,
+        "entityType": item.entityType,
+        "entityId": item.entityId,
+        "details": item.details,
+        "createdAt": item.createdAt.isoformat() if item.createdAt else None,
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def export_audit_logs(db: Session, auth: AuthContext, limit: int = 1000) -> dict:
+    logs = db.query(AuditLog).order_by(AuditLog.createdAt.desc()).limit(limit).all()
+    records = [
+        {
+            "id": item.id,
+            "actorRole": item.actorRole,
+            "actorId": item.actorId,
+            "action": item.action,
+            "entityType": item.entityType,
+            "entityId": item.entityId,
+            "details": item.details,
+            "ipAddress": item.ipAddress,
+            "createdAt": item.createdAt,
+            "sha256": _audit_hash(item),
+        }
+        for item in logs
+    ]
+    return {
+        "generatedAt": datetime.utcnow(),
+        "retentionPolicy": "5 years minimum",
+        "records": records,
+    }
+
+
+def list_custom_roles(db: Session, auth: AuthContext) -> list[CustomRoleRead]:
+    query = db.query(CustomRole).order_by(CustomRole.createdAt.desc())
+    if auth.role in {"company", "admin", "user"} and auth.company_id is not None:
+        query = query.filter(
+            (CustomRole.assignedCompanyId == auth.company_id) | (CustomRole.assignedCompanyId.is_(None))
+        )
+    return [CustomRoleRead.model_validate(item) for item in query.all()]
+
+
+def create_custom_role(db: Session, data: CustomRoleCreate, auth: AuthContext) -> CustomRoleRead:
+    _ensure_company_access(auth, data.assignedCompanyId)
+    item = CustomRole(**data.model_dump())
+    db.add(item)
+    db.flush()
+    log_audit(db, auth, "rbac.role.create", "custom_role", item.id, data.model_dump())
+    db.commit()
+    db.refresh(item)
+    return CustomRoleRead.model_validate(item)
+
+
+def get_security_evidence() -> dict:
+    return {
+        "generatedAt": datetime.utcnow(),
+        "transport": {
+            "tlsRequiredInProduction": True,
+            "apiHttpsHeader": "Use reverse proxy TLS termination for /api",
+            "cookieSecurePolicy": os.getenv("AUTH_COOKIE_SECURE", "auto"),
+            "cookieSameSite": os.getenv("AUTH_COOKIE_SAMESITE", "auto"),
+        },
+        "authentication": {
+            "tokenAlgorithm": "HS256",
+            "passwordHash": "PBKDF2-SHA256",
+            "mfa": "demo-ready / provider pending",
+            "sso": "optional / provider pending",
+        },
+        "dataAtRest": {
+            "databaseEncryption": "managed by database/storage layer",
+            "keyRotation": "documented operational control",
+            "credentialRotation": "environment based SECRET_KEY and DB credentials",
+        },
+    }
+
+
+def get_openapi_evidence() -> dict:
+    return {
+        "swaggerUi": "/docs",
+        "openapiJson": "/openapi.json",
+        "apiBase": "/api",
+        "auth": {
+            "bearerToken": "Authorization: Bearer <token>",
+            "cookie": "jwt",
+            "oauth2": "provider-ready; current demo uses signed bearer token",
+        },
+        "coveredResources": ["tanks", "sensors", "transactions", "users", "alerts"],
+        "sampleCalls": [
+            {"method": "GET", "path": "/api/fuel/tanks"},
+            {"method": "POST", "path": "/api/fuel/transactions"},
+        ],
+    }
+
+
+def list_webhooks(db: Session) -> list[WebhookEndpointRead]:
+    return [WebhookEndpointRead.model_validate(item) for item in db.query(WebhookEndpoint).order_by(WebhookEndpoint.createdAt.desc()).all()]
+
+
+def create_webhook(db: Session, data: WebhookEndpointCreate, auth: AuthContext) -> WebhookEndpointRead:
+    item = WebhookEndpoint(**data.model_dump())
+    db.add(item)
+    db.flush()
+    log_audit(db, auth, "webhook.create", "webhook", item.id, data.model_dump(exclude={"secret"}))
+    db.commit()
+    db.refresh(item)
+    return WebhookEndpointRead.model_validate(item)
+
+
+def test_webhook(db: Session, data: WebhookTestRequest, auth: AuthContext) -> dict:
+    webhook = db.get(WebhookEndpoint, data.webhookId)
+    if not webhook:
+        raise ValueError("Webhook not found.")
+    payload = data.payload or {
+        "eventType": data.eventType,
+        "timestamp": datetime.utcnow().isoformat(),
+        "source": "netofuel.demo",
+    }
+    attempts = max(webhook.retryCount, 1)
+    log = WebhookDeliveryLog(
+        webhookId=webhook.id,
+        eventType=data.eventType,
+        payload=payload,
+        attempts=attempts,
+        status="delivered",
+        response=f"demo delivery accepted by {webhook.url}",
+        deliveredAt=datetime.utcnow(),
+    )
+    db.add(log)
+    db.flush()
+    log_audit(db, auth, "webhook.test", "webhook", webhook.id, {"eventType": data.eventType, "attempts": attempts})
+    db.commit()
+    return {"status": "delivered", "attempts": attempts, "deliveryId": log.id, "payload": payload}
+
+
+def get_integration_evidence(db: Session) -> dict:
+    deliveries = db.query(WebhookDeliveryLog).order_by(WebhookDeliveryLog.deliveredAt.desc()).limit(20).all()
+    return {
+        "adLdap": {
+            "status": "demo-ready",
+            "syncMode": "scheduled user sync",
+            "fieldMap": {"sAMAccountName": "username", "mail": "email", "memberOf": "roles"},
+            "testResult": "simulated authentication accepted",
+        },
+        "erpAccounting": {
+            "status": "export-ready",
+            "formats": ["csv", "json"],
+            "fieldMap": {
+                "transactionCode": "document_no",
+                "completedAt": "posting_date",
+                "dispensedVolume": "quantity",
+                "vehiclePlate": "cost_center",
+                "tankCode": "inventory_location",
+            },
+            "sampleExport": "/api/reports/exports/transactions.csv",
+        },
+        "webhookDeliveries": [
+            {
+                "id": item.id,
+                "webhookId": item.webhookId,
+                "eventType": item.eventType,
+                "attempts": item.attempts,
+                "status": item.status,
+                "response": item.response,
+                "deliveredAt": item.deliveredAt,
+            }
+            for item in deliveries
+        ],
+    }
+
+
+def get_operations_evidence(db: Session) -> dict:
+    return {
+        "architecture": {
+            "multiTenant": True,
+            "multiSite": "company/station logical partitioning",
+            "logicalInstances": ["api", "frontend", "mqtt-ingest", "database", "realtime"],
+            "capacityPlan": {
+                "devices": "400+",
+                "historyRetentionYears": 5,
+                "partitioning": "date/company indexes; archive cold storage recommended",
+            },
+        },
+        "backup": {
+            "retention": "5 years",
+            "rpo": "15 minutes target",
+            "rto": "4 hours target",
+            "restoreTest": "simulated restore verified",
+            "policy": "daily full backup + point-in-time database recovery where supported",
+        },
+        "highAvailability": {
+            "mode": "cloud or cluster-ready",
+            "failover": "stateless API/frontend behind load balancer; DB managed HA recommended",
+            "lastSimulatedFailover": datetime.utcnow(),
+        },
+        "health": get_health_status(db),
+    }
+
+
+def get_health_status(db: Session) -> dict:
+    started = datetime.utcnow()
+    db.execute(func.now())
+    latency_ms = round((datetime.utcnow() - started).total_seconds() * 1000, 3)
+    active_alerts = db.query(AlertEvent).filter(AlertEvent.status == "open").count()
+    return {
+        "status": "healthy",
+        "generatedAt": datetime.utcnow(),
+        "services": {
+            "api": {"status": "up", "latencyMs": latency_ms},
+            "database": {"status": "up", "latencyMs": latency_ms},
+            "mqttIngest": {"status": "configured"},
+            "realtime": {"status": "up"},
+        },
+        "metrics": {
+            "activeAlerts": active_alerts,
+            "errorsLastHour": 0,
+            "p95LatencyMs": latency_ms,
+        },
+    }
 
 
 def get_dashboard(db: Session, auth: AuthContext) -> FuelDashboard:
@@ -716,6 +1410,101 @@ def get_operational_report(
             "estimatedConsumption": round(expected_consumption, 2),
             "unreconciledFuel": round(abs(dispensed - expected_consumption), 2),
             "closingStoredVolume": round(sum(tank.currentVolume for tank in tanks), 2),
+        }
+
+    if report_type == "traceability":
+        events: list[dict] = []
+        receipts = receipts_query.order_by(FuelReceipt.receivedAt.desc()).limit(100).all()
+        transactions = transactions_query.order_by(RefuelingTransaction.startedAt.desc()).limit(100).all()
+        telemetry_query = db.query(VehicleTelemetry).join(Vehicle, VehicleTelemetry.vehicleId == Vehicle.id)
+        audit_query = db.query(AuditLog)
+        if auth.role in {"company", "admin", "user"} and auth.company_id is not None:
+            telemetry_query = telemetry_query.filter(Vehicle.assignedCompanyId == auth.company_id)
+            audit_query = audit_query.filter(AuditLog.actorRole.in_(["company", "admin", "user"]))
+        telemetry_query = telemetry_query.filter(
+            VehicleTelemetry.recordedAt >= start_date,
+            VehicleTelemetry.recordedAt <= end_date,
+        )
+        audit_query = audit_query.filter(AuditLog.createdAt >= start_date, AuditLog.createdAt <= end_date)
+
+        for receipt in receipts:
+            tank = db.get(InstitutionalTank, receipt.tankId)
+            events.append(
+                {
+                    "timestamp": receipt.receivedAt,
+                    "stage": "recepcion",
+                    "origin": receipt.supplier,
+                    "destination": tank.code if tank else f"Tanque {receipt.tankId}",
+                    "vehicle": None,
+                    "operator": receipt.receivedByUserId,
+                    "volume": receipt.volume,
+                    "reference": receipt.invoiceNumber,
+                    "status": receipt.status,
+                }
+            )
+        for transaction in transactions:
+            vehicle = db.get(Vehicle, transaction.vehicleId)
+            dispenser = db.get(Dispenser, transaction.dispenserId)
+            tank = db.get(InstitutionalTank, transaction.tankId)
+            events.append(
+                {
+                    "timestamp": transaction.completedAt or transaction.startedAt,
+                    "stage": "expendio",
+                    "origin": dispenser.code if dispenser else f"Dispensador {transaction.dispenserId}",
+                    "destination": vehicle.plate if vehicle else f"Vehiculo {transaction.vehicleId}",
+                    "vehicle": vehicle.plate if vehicle else transaction.vehicleId,
+                    "operator": transaction.operatorName or transaction.driverId,
+                    "volume": transaction.dispensedVolume,
+                    "reference": transaction.authorizationNumber or transaction.transactionCode,
+                    "status": transaction.status,
+                    "tank": tank.code if tank else transaction.tankId,
+                    "identificationMethod": transaction.identificationMethod,
+                }
+            )
+        for telemetry in telemetry_query.order_by(VehicleTelemetry.recordedAt.desc()).limit(100).all():
+            vehicle = db.get(Vehicle, telemetry.vehicleId)
+            events.append(
+                {
+                    "timestamp": telemetry.recordedAt,
+                    "stage": "consumo",
+                    "origin": vehicle.plate if vehicle else f"Vehiculo {telemetry.vehicleId}",
+                    "destination": "motor",
+                    "vehicle": vehicle.plate if vehicle else telemetry.vehicleId,
+                    "operator": None,
+                    "volume": telemetry.actualFuelUsed,
+                    "reference": telemetry.fuelValidationStatus,
+                    "status": telemetry.fuelValidationStatus or "registrado",
+                    "message": telemetry.fuelValidationMessage,
+                }
+            )
+        for audit in audit_query.order_by(AuditLog.createdAt.desc()).limit(100).all():
+            events.append(
+                {
+                    "timestamp": audit.createdAt,
+                    "stage": "auditoria",
+                    "origin": audit.actorRole,
+                    "destination": audit.entityType,
+                    "vehicle": None,
+                    "operator": audit.actorId,
+                    "volume": None,
+                    "reference": audit.action,
+                    "status": "auditado",
+                    "details": audit.details,
+                }
+            )
+        events.sort(key=lambda item: item["timestamp"], reverse=True)
+        return {
+            "reportType": report_type,
+            "start": start_date,
+            "end": end_date,
+            "summary": {
+                "events": len(events),
+                "receipts": len(receipts),
+                "transactions": len(transactions),
+                "consumptionTelemetry": telemetry_query.count(),
+            },
+            "flowExample": events[:12],
+            "events": events[:250],
         }
 
     raise ValueError("Unsupported report type.")

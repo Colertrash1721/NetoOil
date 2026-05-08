@@ -21,10 +21,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         { name: 'Vehiculos', path: '/admin/fleet', icon: 'bx-car' },
         { name: 'Combustible', path: '/admin/fuel', icon: 'bx-gas-pump' },
         { name: 'Analytics', path: '/admin/analytics', icon: 'bx-bar-chart-alt-2' },
+        { name: 'Trazabilidad', path: '/admin/traceability', icon: 'bx-git-branch' },
+        { name: 'Dispositivos Demo', path: '/admin/device-demo', icon: 'bx-chip' },
+        { name: 'Cumplimiento', path: '/admin/compliance', icon: 'bx-shield-quarter' },
+        { name: 'Integraciones', path: '/admin/integrations', icon: 'bx-plug' },
         ...(currentRole === 'superadmin'
             ? [
                 { name: 'Users', path: '/admin/users', icon: 'bx-user' },
                 { name: 'Admins', path: '/admin/profile', icon: 'bx-key' },
+                { name: 'Simulación', path: '/admin/simulation', icon: 'bx-test-tube' },
             ]
             : []),
         { name: 'Logout', path: '/logout', icon: 'bx-log-out' },

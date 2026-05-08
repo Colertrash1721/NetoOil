@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from alerts.models import AlertEvent
+from alerts.models import AlertEvent, NotificationDeliveryLog
 from alerts.schemas import AlertRead
 from auth.security import AuthContext
 from companies.models import Company
@@ -81,17 +81,84 @@ def _notify_alert_created(
         recipient = company.email if company else None
 
     if recipient:
-        send_email(
-            recipient,
-            f"[NetoFuel] {alert.title}",
-            (
-                f"{alert.title}\n\n"
-                f"{alert.message}\n\n"
-                f"Severidad: {alert.severity}\n"
-                f"Entidad: {alert.entityType} #{alert.entityId}\n"
-                f"Fecha: {alert.recordedAt.isoformat()}"
-            ),
+        try:
+            send_email(
+                recipient,
+                f"[NetoFuel] {alert.title}",
+                (
+                    f"{alert.title}\n\n"
+                    f"{alert.message}\n\n"
+                    f"Severidad: {alert.severity}\n"
+                    f"Entidad: {alert.entityType} #{alert.entityId}\n"
+                    f"Fecha: {alert.recordedAt.isoformat()}"
+                ),
+            )
+            db.add(
+                NotificationDeliveryLog(
+                    alertId=alert.id,
+                    channel="email",
+                    recipient=recipient,
+                    status="sent",
+                    provider="smtp",
+                    response="accepted",
+                    sentAt=datetime.utcnow(),
+                    receivedAt=datetime.utcnow(),
+                )
+            )
+        except Exception as error:
+            db.add(
+                NotificationDeliveryLog(
+                    alertId=alert.id,
+                    channel="email",
+                    recipient=recipient,
+                    status="failed",
+                    provider="smtp",
+                    response=str(error)[:255],
+                    sentAt=datetime.utcnow(),
+                )
+            )
+
+    db.add(
+        NotificationDeliveryLog(
+            alertId=alert.id,
+            channel="internal",
+            recipient=f"company:{alert.assignedCompanyId}" if alert.assignedCompanyId else "global",
+            status="received",
+            provider="realtime",
+            response="queued",
+            sentAt=datetime.utcnow(),
+            receivedAt=datetime.utcnow(),
         )
+    )
+
+    metadata = alert.eventMetadata or {}
+    threshold_id = metadata.get("thresholdId") if isinstance(metadata, dict) else None
+    if threshold_id:
+        from fuel_management.models import AlertThreshold
+
+        threshold = db.get(AlertThreshold, threshold_id)
+        if threshold:
+            metadata = {
+                **metadata,
+                "notificationChannels": threshold.notificationChannels,
+                "smsNumber": threshold.smsNumber,
+                "webhookUrl": threshold.webhookUrl,
+            }
+    for channel, recipient_key in (("sms", "smsNumber"), ("webhook", "webhookUrl")):
+        recipient_value = metadata.get(recipient_key)
+        if recipient_value:
+            db.add(
+                NotificationDeliveryLog(
+                    alertId=alert.id,
+                    channel=channel,
+                    recipient=str(recipient_value),
+                    status="sent",
+                    provider="demo",
+                    response="simulated delivery",
+                    sentAt=datetime.utcnow(),
+                    receivedAt=datetime.utcnow(),
+                )
+            )
 
     publish_realtime_event(
         {
@@ -114,6 +181,32 @@ def _notify_alert_created(
         },
         alert.assignedCompanyId,
     )
+
+
+def read_notification_logs_service(
+    db: Session,
+    auth: AuthContext,
+    *,
+    limit: int = 100,
+) -> list[dict]:
+    query = db.query(NotificationDeliveryLog).outerjoin(AlertEvent, NotificationDeliveryLog.alertId == AlertEvent.id)
+    if auth.role in {"company", "admin", "user"} and auth.company_id is not None:
+        query = query.filter(AlertEvent.assignedCompanyId == auth.company_id)
+    logs = query.order_by(NotificationDeliveryLog.sentAt.desc()).limit(limit).all()
+    return [
+        {
+            "id": item.id,
+            "alertId": item.alertId,
+            "channel": item.channel,
+            "recipient": item.recipient,
+            "status": item.status,
+            "provider": item.provider,
+            "response": item.response,
+            "sentAt": item.sentAt,
+            "receivedAt": item.receivedAt,
+        }
+        for item in logs
+    ]
 
 
 def close_open_alerts(db: Session, *, vehicle_id: int, alert_type: str, resolved_at: datetime) -> None:

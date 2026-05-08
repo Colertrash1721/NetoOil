@@ -1,4 +1,7 @@
 from datetime import datetime, timedelta
+import csv
+import io
+import json
 
 from fastapi import HTTPException, status
 from sqlalchemy import func
@@ -347,6 +350,63 @@ def build_advanced_kpis(
             for row in by_tank
         ],
     }
+
+
+def build_consumption_forecast(
+    db: Session,
+    auth: AuthContext,
+    *,
+    months: int = 1,
+    confidence_percent: float = 80,
+) -> dict:
+    lookback_days = 90
+    start = datetime.utcnow() - timedelta(days=lookback_days)
+    telemetry_query = db.query(VehicleTelemetry).join(Vehicle, VehicleTelemetry.vehicleId == Vehicle.id)
+    if auth.role in {"company", "admin", "user"} and auth.company_id is not None:
+        telemetry_query = telemetry_query.filter(Vehicle.assignedCompanyId == auth.company_id)
+    telemetry = telemetry_query.filter(VehicleTelemetry.recordedAt >= start).all()
+    daily: dict[str, float] = {}
+    for item in telemetry:
+        key = item.recordedAt.date().isoformat()
+        daily[key] = daily.get(key, 0) + (item.actualFuelUsed or 0)
+    values = list(daily.values()) or [0]
+    average = sum(values) / len(values)
+    variance = sum((value - average) ** 2 for value in values) / len(values)
+    stddev = variance ** 0.5
+    forecast_days = max(months * 30, 1)
+    forecast = average * forecast_days
+    z = 1.28 if confidence_percent <= 80 else 1.96
+    margin = z * stddev * (forecast_days ** 0.5)
+    return {
+        "generatedAt": datetime.utcnow(),
+        "method": "simple moving average over last 90 days",
+        "assumptions": {
+            "lookbackDays": lookback_days,
+            "forecastDays": forecast_days,
+            "confidencePercent": confidence_percent,
+            "seasonality": "not applied in demo",
+        },
+        "dailyAverage": round(average, 4),
+        "monthlyForecast": round(forecast, 4),
+        "confidenceInterval": {
+            "low": round(max(forecast - margin, 0), 4),
+            "high": round(forecast + margin, 4),
+        },
+        "sampleDays": len(values),
+    }
+
+
+def export_records(records: list[dict], fmt: str) -> tuple[str, str, bytes]:
+    normalized = fmt.lower()
+    if normalized == "json":
+        return "report.json", "application/json", json.dumps(records, default=str, indent=2).encode("utf-8")
+    output = io.StringIO()
+    fieldnames = sorted({key for record in records for key in record.keys()})
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for record in records:
+        writer.writerow({key: json.dumps(value, default=str) if isinstance(value, (dict, list)) else value for key, value in record.items()})
+    return "report.csv", "text/csv", output.getvalue().encode("utf-8")
 
 
 def export_vehicle_history_pdf(

@@ -22,8 +22,10 @@ export type TankApi = {
   name: string;
   location: string;
   fuelType: string;
+  storageType: string;
   capacity: number;
   currentVolume: number;
+  targetRefillGallons?: number | null;
   temperature?: number | null;
   density?: number | null;
   status: string;
@@ -40,8 +42,10 @@ export type TankCreatePayload = {
   name: string;
   location: string;
   fuelType?: string;
+  storageType?: string;
   capacity: number;
   currentVolume: number;
+  targetRefillGallons?: number | null;
   temperature?: number | null;
   density?: number | null;
   status?: string;
@@ -59,6 +63,11 @@ export type DispenserApi = {
   tankId: number;
   tankCode?: string | null;
   totalizer: number;
+  targetRefillGallons?: number | null;
+  supportedIdentificationMethods: string;
+  fallbackIdentificationMethod: string;
+  productConfigurations?: Array<Record<string, unknown>> | null;
+  hoseCount: number;
   status: string;
   deviceIdentifier?: string | null;
   assignedCompanyId: number;
@@ -72,6 +81,11 @@ export type DispenserCreatePayload = {
   location: string;
   tankId: number;
   totalizer?: number;
+  targetRefillGallons?: number | null;
+  supportedIdentificationMethods?: string;
+  fallbackIdentificationMethod?: string;
+  productConfigurations?: Array<Record<string, unknown>> | null;
+  hoseCount?: number;
   status?: string;
   deviceIdentifier?: string | null;
   assignedCompanyId: number;
@@ -89,6 +103,9 @@ export type AlertThresholdApi = {
   maxValue?: number | null;
   variationLimit?: number | null;
   notificationEmail?: string | null;
+  notificationChannels?: string;
+  smsNumber?: string | null;
+  webhookUrl?: string | null;
   enabled: boolean;
   createdAt: string;
 };
@@ -102,6 +119,9 @@ export type AlertThresholdPayload = {
   maxValue?: number | null;
   variationLimit?: number | null;
   notificationEmail?: string | null;
+  notificationChannels?: string;
+  smsNumber?: string | null;
+  webhookUrl?: string | null;
   enabled?: boolean;
 };
 
@@ -139,6 +159,14 @@ export type RefuelingTransactionApi = {
   tankId: number;
   tankCode?: string | null;
   policyId?: number | null;
+  operatorName?: string | null;
+  authorizationNumber?: string | null;
+  productType: string;
+  hoseNumber: number;
+  flowMeterStart?: number | null;
+  flowMeterEnd?: number | null;
+  flowMeterAccuracyPercent?: number | null;
+  identificationStatus: string;
   requestedVolume?: number | null;
   authorizedVolume?: number | null;
   dispensedVolume: number;
@@ -151,6 +179,79 @@ export type RefuelingTransactionApi = {
   startedAt: string;
   completedAt?: string | null;
   createdAt: string;
+};
+
+export type FuelTransactionFilters = {
+  limit?: number;
+  start?: string;
+  end?: string;
+  vehicleId?: number;
+  dispenserId?: number;
+  tankId?: number;
+};
+
+export type FuelSimulationPayload = {
+  deviceType: 'vehicle' | 'tank' | 'dispenser';
+  deviceId: number;
+  operation: 'fill' | 'drain';
+  gallons: number;
+};
+
+export type FuelSimulationResultApi = {
+  deviceType: 'vehicle' | 'tank' | 'dispenser';
+  deviceId: number;
+  operation: 'fill' | 'drain';
+  requestedGallons: number;
+  configuredLimitGallons?: number | null;
+  appliedGallons: number;
+  cutGallons: number;
+  beforeGallons: number;
+  afterGallons: number;
+  capacityGallons?: number | null;
+  status: string;
+  messages: string[];
+  alertIds: number[];
+};
+
+export type DeviceDemoStatusApi = {
+  sensors: Array<{
+    id: number;
+    identifier: string;
+    sensorType: string;
+    pairedVehicleId?: number | null;
+    pairingStatus: string;
+    batteryLevel?: number | null;
+    remoteConfig?: Record<string, unknown> | null;
+    tamperStatus: string;
+    cachedEvents: number;
+    lastSeenAt: string;
+  }>;
+};
+
+export type WirelessSensorDemoPayload = {
+  sensorIdentifier: string;
+  vehicleId?: number | null;
+  batteryLevel?: number | null;
+  tamperDetected?: boolean;
+  remoteConfig?: Record<string, unknown> | null;
+};
+
+export type OfflineReplayPayload = {
+  events: Array<{
+    sensorIdentifier: string;
+    vehicleId?: number | null;
+    sequence: number;
+    originalTimestamp: string;
+    batteryLevel?: number | null;
+    payload?: Record<string, unknown> | null;
+  }>;
+};
+
+export type DeviceDemoResultApi = {
+  status: string;
+  processed: number;
+  alertIds: number[];
+  messages: string[];
 };
 
 export type FuelDashboardApi = {
@@ -223,6 +324,73 @@ export type AdvancedKpisApi = {
   }>;
 };
 
+export type OperationalTraceabilityReportApi = {
+  reportType: string;
+  start: string;
+  end: string;
+  summary: {
+    events: number;
+    receipts: number;
+    transactions: number;
+    consumptionTelemetry: number;
+  };
+  flowExample: Array<Record<string, unknown>>;
+  events: Array<Record<string, unknown>>;
+};
+
+export type NotificationLogApi = {
+  id: number;
+  alertId?: number | null;
+  channel: string;
+  recipient?: string | null;
+  status: string;
+  provider: string;
+  response?: string | null;
+  sentAt: string;
+  receivedAt?: string | null;
+};
+
+export type CustomRoleApi = {
+  id: number;
+  name: string;
+  description?: string | null;
+  assignedCompanyId?: number | null;
+  permissions: string[];
+  status: string;
+  createdAt: string;
+};
+
+export type SecurityEvidenceApi = {
+  generatedAt: string;
+  transport: Record<string, unknown>;
+  authentication: Record<string, unknown>;
+  dataAtRest: Record<string, unknown>;
+};
+
+export type ConsumptionForecastApi = {
+  generatedAt: string;
+  method: string;
+  assumptions: Record<string, unknown>;
+  dailyAverage: number;
+  monthlyForecast: number;
+  confidenceInterval: {
+    low: number;
+    high: number;
+  };
+  sampleDays: number;
+};
+
+export type WebhookEndpointApi = {
+  id: number;
+  name: string;
+  url: string;
+  eventTypes: string;
+  retryCount: number;
+  secret?: string | null;
+  status: string;
+  createdAt: string;
+};
+
 export const getFuelDashboardService = async () => {
   const response = await apiClient.get<FuelDashboardApi>('/fuel/dashboard');
   return response.data;
@@ -240,6 +408,16 @@ export const createTankService = async (payload: TankCreatePayload) => {
 
 export const updateTankService = async (tankId: number, payload: TankUpdatePayload) => {
   const response = await apiClient.patch<TankApi>(`/fuel/tanks/${tankId}`, payload);
+  return response.data;
+};
+
+export const updateTankTargetRefillGallonsService = async (
+  tankId: number,
+  targetRefillGallons: number | null,
+) => {
+  const response = await apiClient.patch<TankApi>(`/fuel/tanks/${tankId}/target-refill-gallons`, {
+    targetRefillGallons,
+  });
   return response.data;
 };
 
@@ -283,15 +461,47 @@ export const updateDispenserService = async (dispenserId: number, payload: Dispe
   return response.data;
 };
 
+export const updateDispenserTargetRefillGallonsService = async (
+  dispenserId: number,
+  targetRefillGallons: number | null,
+) => {
+  const response = await apiClient.patch<DispenserApi>(
+    `/fuel/dispensers/${dispenserId}/target-refill-gallons`,
+    { targetRefillGallons },
+  );
+  return response.data;
+};
+
 export const deleteDispenserService = async (dispenserId: number) => {
   const response = await apiClient.delete<{ message: string }>(`/fuel/dispensers/${dispenserId}`);
   return response.data;
 };
 
-export const getFuelTransactionsService = async (limit = 100) => {
+export const getFuelTransactionsService = async (filters: FuelTransactionFilters | number = 100) => {
+  const params = typeof filters === 'number' ? { limit: filters } : filters;
   const response = await apiClient.get<RefuelingTransactionApi[]>('/fuel/transactions', {
-    params: { limit },
+    params,
   });
+  return response.data;
+};
+
+export const simulateFuelDeviceService = async (payload: FuelSimulationPayload) => {
+  const response = await apiClient.post<FuelSimulationResultApi>('/fuel/simulation', payload);
+  return response.data;
+};
+
+export const getDeviceDemoStatusService = async () => {
+  const response = await apiClient.get<DeviceDemoStatusApi>('/fuel/device-demo/status');
+  return response.data;
+};
+
+export const simulateWirelessSensorEventService = async (payload: WirelessSensorDemoPayload) => {
+  const response = await apiClient.post<DeviceDemoResultApi>('/fuel/device-demo/wireless-event', payload);
+  return response.data;
+};
+
+export const replayOfflineSensorEventsService = async (payload: OfflineReplayPayload) => {
+  const response = await apiClient.post<DeviceDemoResultApi>('/fuel/device-demo/offline-replay', payload);
   return response.data;
 };
 
@@ -324,5 +534,86 @@ export const getAdvancedKpisService = async (filters: ReportFilters = {}) => {
   const response = await apiClient.get<AdvancedKpisApi>('/reports/kpis/advanced', {
     params: filters,
   });
+  return response.data;
+};
+
+export const getFuelOperationalReportService = async (
+  reportType: string,
+  filters: Pick<ReportFilters, 'start' | 'end'> = {},
+) => {
+  const response = await apiClient.get<OperationalTraceabilityReportApi>(`/fuel/reports/${reportType}`, {
+    params: filters,
+  });
+  return response.data;
+};
+
+export const getNotificationLogsService = async (limit = 100) => {
+  const response = await apiClient.get<NotificationLogApi[]>('/alerts/notifications', {
+    params: { limit },
+  });
+  return response.data;
+};
+
+export const getAuditExportService = async (limit = 1000) => {
+  const response = await apiClient.get<{ generatedAt: string; retentionPolicy: string; records: Array<Record<string, unknown>> }>('/fuel/audit/export', {
+    params: { limit },
+  });
+  return response.data;
+};
+
+export const getCustomRolesService = async () => {
+  const response = await apiClient.get<CustomRoleApi[]>('/fuel/rbac/roles');
+  return response.data;
+};
+
+export const createCustomRoleService = async (payload: Omit<CustomRoleApi, 'id' | 'createdAt'>) => {
+  const response = await apiClient.post<CustomRoleApi>('/fuel/rbac/roles', payload);
+  return response.data;
+};
+
+export const getSecurityEvidenceService = async () => {
+  const response = await apiClient.get<SecurityEvidenceApi>('/fuel/security/evidence');
+  return response.data;
+};
+
+export const getConsumptionForecastService = async (months = 1, confidencePercent = 80) => {
+  const response = await apiClient.get<ConsumptionForecastApi>('/reports/forecast/consumption', {
+    params: { months, confidencePercent },
+  });
+  return response.data;
+};
+
+export const getIntegrationOpenApiEvidenceService = async () => {
+  const response = await apiClient.get<Record<string, unknown>>('/fuel/integrations/openapi');
+  return response.data;
+};
+
+export const getIntegrationEvidenceService = async () => {
+  const response = await apiClient.get<Record<string, unknown>>('/fuel/integrations/evidence');
+  return response.data;
+};
+
+export const getWebhooksService = async () => {
+  const response = await apiClient.get<WebhookEndpointApi[]>('/fuel/integrations/webhooks');
+  return response.data;
+};
+
+export const createWebhookService = async (payload: Omit<WebhookEndpointApi, 'id' | 'createdAt'>) => {
+  const response = await apiClient.post<WebhookEndpointApi>('/fuel/integrations/webhooks', payload);
+  return response.data;
+};
+
+export const testWebhookService = async (payload: { webhookId: number; eventType: string; payload?: Record<string, unknown> }) => {
+  const response = await apiClient.post<Record<string, unknown>>('/fuel/integrations/webhooks/test', payload);
+  return response.data;
+};
+
+export const getOperationsEvidenceService = async () => {
+  const response = await apiClient.get<Record<string, unknown>>('/fuel/operations/evidence');
+  return response.data;
+};
+
+export const getOperationsHealthService = async () => {
+  const response = await apiClient.get<Record<string, unknown>>('/fuel/operations/health');
   return response.data;
 };

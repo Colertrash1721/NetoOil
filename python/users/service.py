@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from auth.security import AuthContext
 from companies.repository import get_company_by_id
 from users.repository import (
     get_all_users,
@@ -11,7 +12,19 @@ from users.schemas import UserRead
 
 
 VALID_STATUSES = {"pending", "accepted", "rejected"}
-VALID_COMPANY_ROLES = {"admin", "viewer"}
+VALID_COMPANY_ROLES = {"superadmin", "admin", "user", "viewer"}
+
+
+def _normalize_company_role(company_role: str | None) -> str:
+    normalized_role = (company_role or "user").strip().lower()
+    if normalized_role == "viewer":
+        return "user"
+    return normalized_role
+
+
+def _ensure_admin_user_scope(auth: AuthContext, company_id: int) -> None:
+    if auth.role == "admin" and auth.company_id != company_id:
+        raise ValueError("Permisos insuficientes para esta empresa.")
 
 
 def _serialize_user(row: tuple) -> UserRead:
@@ -21,7 +34,7 @@ def _serialize_user(row: tuple) -> UserRead:
         username=user.username,
         email=user.email,
         status=user.status,
-        companyRole=getattr(user, "companyRole", "viewer"),
+        companyRole=_normalize_company_role(getattr(user, "companyRole", "user")),
         creationDate=user.creationDate,
         lastConnection=user.lastConnection,
         companyId=user.companyId,
@@ -29,11 +42,12 @@ def _serialize_user(row: tuple) -> UserRead:
     )
 
 
-def read_all_users_service(db: Session) -> list[UserRead]:
-    return [_serialize_user(row) for row in get_all_users(db)]
+def read_all_users_service(db: Session, auth: AuthContext) -> list[UserRead]:
+    company_id = auth.company_id if auth.role == "admin" else None
+    return [_serialize_user(row) for row in get_all_users(db, company_id)]
 
 
-def update_user_status_service(db: Session, user_id: int, status: str) -> UserRead:
+def update_user_status_service(db: Session, user_id: int, status: str, auth: AuthContext) -> UserRead:
     normalized_status = status.strip().lower()
     if normalized_status not in VALID_STATUSES:
         raise ValueError("Estado invalido.")
@@ -41,6 +55,7 @@ def update_user_status_service(db: Session, user_id: int, status: str) -> UserRe
     user = get_user_by_id(db, user_id)
     if not user:
         raise ValueError("Usuario no encontrado.")
+    _ensure_admin_user_scope(auth, user.companyId)
 
     company = get_company_by_id(db, user.companyId)
     if not company:
@@ -52,7 +67,7 @@ def update_user_status_service(db: Session, user_id: int, status: str) -> UserRe
         username=updated_user.username,
         email=updated_user.email,
         status=updated_user.status,
-        companyRole=getattr(updated_user, "companyRole", "viewer"),
+        companyRole=_normalize_company_role(getattr(updated_user, "companyRole", "user")),
         creationDate=updated_user.creationDate,
         lastConnection=updated_user.lastConnection,
         companyId=updated_user.companyId,
@@ -60,14 +75,20 @@ def update_user_status_service(db: Session, user_id: int, status: str) -> UserRe
     )
 
 
-def update_user_company_role_service(db: Session, user_id: int, company_role: str) -> UserRead:
-    normalized_role = company_role.strip().lower()
+def update_user_company_role_service(
+    db: Session,
+    user_id: int,
+    company_role: str,
+    auth: AuthContext,
+) -> UserRead:
+    normalized_role = _normalize_company_role(company_role)
     if normalized_role not in VALID_COMPANY_ROLES:
         raise ValueError("Rol invalido.")
 
     user = get_user_by_id(db, user_id)
     if not user:
         raise ValueError("Usuario no encontrado.")
+    _ensure_admin_user_scope(auth, user.companyId)
 
     company = get_company_by_id(db, user.companyId)
     if not company:
