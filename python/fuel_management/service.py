@@ -7,10 +7,12 @@ from uuid import uuid4
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from alerts.engine import evaluate_tank_telemetry_alerts, evaluate_transaction_alerts
+from alerts.engine import evaluate_tank_telemetry_alerts, evaluate_transaction_alerts, evaluate_vehicle_telemetry_alerts
 from alerts.models import AlertEvent
 from auth.security import AuthContext
+from realtime import publish_realtime_event
 from sensor_data.models import SensorDevice, SensorDeviceTelemetry
+from vehicles.consumption import validate_vehicle_consumption
 from vehicles.models import Vehicle, VehicleTelemetry
 from fuel_management.models import (
     AlertThreshold,
@@ -95,6 +97,15 @@ def _parse_capacity_gallons(raw_value: str | None) -> float | None:
     return round(parsed, 4)
 
 
+def _fuel_level_percent(volume_liters: float | None, capacity_gallons: float | None) -> float | None:
+    if volume_liters is None or capacity_gallons is None or capacity_gallons <= 0:
+        return None
+    capacity_liters = _gallons_to_liters(capacity_gallons)
+    if capacity_liters <= 0:
+        return None
+    return round(max(0, min((volume_liters / capacity_liters) * 100, 100)), 2)
+
+
 def _simulation_alert(
     db: Session,
     *,
@@ -109,6 +120,7 @@ def _simulation_alert(
     metadata: dict,
 ) -> AlertEvent:
     alert = AlertEvent(
+        vehicleId=entity_id if entity_type == "vehicle" else None,
         entityType=entity_type,
         entityId=entity_id,
         assignedCompanyId=company_id,
@@ -124,6 +136,28 @@ def _simulation_alert(
     db.add(alert)
     db.flush()
     return alert
+
+
+def _append_alert_ids_for_recorded_at(
+    db: Session,
+    *,
+    alert_ids: list[int],
+    entity_type: str,
+    entity_id: int,
+    recorded_at: datetime,
+) -> None:
+    rows = (
+        db.query(AlertEvent.id)
+        .filter(
+            AlertEvent.entityType == entity_type,
+            AlertEvent.entityId == entity_id,
+            AlertEvent.recordedAt == recorded_at,
+        )
+        .all()
+    )
+    for row in rows:
+        if row[0] not in alert_ids:
+            alert_ids.append(row[0])
 
 
 def _company_filter(query, model, auth: AuthContext | None):
@@ -692,6 +726,12 @@ def simulate_fuel_device(
         target_limit = device.targetRefillGallons
         before_gallons = _liters_to_gallons(device.lastVolume)
         capacity_gallons = _parse_capacity_gallons(device.tankCapacity)
+        previous_telemetry = (
+            db.query(VehicleTelemetry)
+            .filter(VehicleTelemetry.vehicleId == device.id)
+            .order_by(VehicleTelemetry.recordedAt.desc())
+            .first()
+        )
     elif device_type == "tank":
         device = db.get(InstitutionalTank, data.deviceId)
         if not device:
@@ -795,24 +835,87 @@ def simulate_fuel_device(
         device.lastVolume = max((device.lastVolume or 0) + delta_liters, 0)
         if capacity_gallons is not None:
             device.lastVolume = min(device.lastVolume, _gallons_to_liters(capacity_gallons))
-        device.lastUpdate = datetime.utcnow()
+        recorded_at = datetime.utcnow()
+        next_fuel_level = _fuel_level_percent(device.lastVolume, capacity_gallons)
+        if next_fuel_level is not None:
+            device.lastFuelLevel = next_fuel_level
+        device.lastUpdate = recorded_at
+        telemetry = VehicleTelemetry(
+            vehicleId=device.id,
+            temperature=device.lastTemperature,
+            inclination=device.lastInclination,
+            volume=device.lastVolume,
+            latitude=device.lastLatitude,
+            longitude=device.lastLongitude,
+            speed=device.lastSpeed,
+            fuelLevel=device.lastFuelLevel,
+            pressure=device.lastPressure,
+            humidity=device.lastHumidity,
+            batteryLevel=device.lastBatteryLevel,
+            alarm=bool(alert_ids),
+            recordedAt=recorded_at,
+        )
+        validation = validate_vehicle_consumption(
+            device,
+            current_fuel_level=telemetry.fuelLevel,
+            current_volume=telemetry.volume,
+            current_latitude=telemetry.latitude,
+            current_longitude=telemetry.longitude,
+            current_speed=telemetry.speed,
+            movement=None,
+            recorded_at=recorded_at,
+            previous_telemetry=previous_telemetry,
+        )
+        telemetry.distanceKm = validation.distance_km
+        telemetry.expectedFuelUsed = validation.expected_fuel_used
+        telemetry.actualFuelUsed = validation.actual_fuel_used
+        telemetry.fuelDelta = validation.fuel_delta
+        telemetry.fuelValidationStatus = validation.status
+        telemetry.fuelValidationMessage = validation.message
+        telemetry.fuelValidationAt = validation.validated_at
+        db.add(telemetry)
+        db.flush()
+        evaluate_vehicle_telemetry_alerts(
+            db,
+            vehicle=device,
+            telemetry=telemetry,
+            previous_telemetry=previous_telemetry,
+        )
+        _append_alert_ids_for_recorded_at(
+            db,
+            alert_ids=alert_ids,
+            entity_type="vehicle",
+            entity_id=device.id,
+            recorded_at=recorded_at,
+        )
+        telemetry.alarm = bool(alert_ids)
         after_gallons = _liters_to_gallons(device.lastVolume)
     elif device_type == "tank":
         device.currentVolume = max((device.currentVolume or 0) + delta_liters, 0)
         device.currentVolume = min(device.currentVolume, device.capacity)
-        device.lastUpdate = datetime.utcnow()
-        db.add(
-            TankTelemetry(
-                tankId=device.id,
-                levelPercent=round((device.currentVolume / device.capacity) * 100, 2) if device.capacity else 0,
-                volume=device.currentVolume,
-                temperature=device.temperature,
-                density=device.density,
-                variation=delta_liters,
-                alarm=bool(alert_ids),
-                recordedAt=datetime.utcnow(),
-            )
+        recorded_at = datetime.utcnow()
+        device.lastUpdate = recorded_at
+        telemetry = TankTelemetry(
+            tankId=device.id,
+            levelPercent=round((device.currentVolume / device.capacity) * 100, 2) if device.capacity else 0,
+            volume=device.currentVolume,
+            temperature=device.temperature,
+            density=device.density,
+            variation=delta_liters,
+            alarm=bool(alert_ids),
+            recordedAt=recorded_at,
         )
+        db.add(telemetry)
+        db.flush()
+        evaluate_tank_telemetry_alerts(db, tank=device, telemetry=telemetry)
+        _append_alert_ids_for_recorded_at(
+            db,
+            alert_ids=alert_ids,
+            entity_type="tank",
+            entity_id=device.id,
+            recorded_at=recorded_at,
+        )
+        telemetry.alarm = bool(alert_ids)
         after_gallons = _liters_to_gallons(device.currentVolume)
     else:
         device.totalizer = max((device.totalizer or 0) + delta_liters, 0)
@@ -836,6 +939,19 @@ def simulate_fuel_device(
         },
     )
     db.commit()
+    publish_realtime_event(
+        {
+            "type": "fuel.simulation.updated",
+            "deviceType": device_type,
+            "deviceId": data.deviceId,
+            "operation": operation,
+            "requestedGallons": requested_gallons,
+            "appliedGallons": applied_gallons,
+            "cutGallons": cut_gallons,
+            "alertIds": alert_ids,
+        },
+        company_id,
+    )
     return FuelSimulationResult(
         deviceType=device_type,
         deviceId=data.deviceId,
@@ -1285,7 +1401,10 @@ def get_dashboard(db: Session, auth: AuthContext) -> FuelDashboard:
         )
 
     expected_consumption = dispensed * 0.97
-    active_alerts = db.query(AlertEvent).filter(AlertEvent.status == "open").count()
+    active_alerts_query = db.query(AlertEvent).filter(AlertEvent.status == "open")
+    if auth.role in {"company", "admin", "user"} and auth.company_id is not None:
+        active_alerts_query = active_alerts_query.filter(AlertEvent.assignedCompanyId == auth.company_id)
+    active_alerts = active_alerts_query.count()
     valid_transactions = 0
     if tank_ids:
         valid_transactions_query = db.query(RefuelingTransaction).filter(

@@ -1,5 +1,6 @@
 'use client';
 
+import { ClientFuelDashboard } from '@/components/clients/fuel-dashboard';
 import { getApiErrorMessage } from '@/services/api/client';
 import { FuelDashboardApi, getFuelDashboardService } from '@/services/fuel/service';
 import { useEffect, useMemo, useState } from 'react';
@@ -63,6 +64,8 @@ function KpiBox({
 }
 
 export default function FuelManagementPage() {
+  return <ClientFuelDashboard canEditTanks />;
+
   const [dashboard, setDashboard] = useState<FuelDashboardApi | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +110,8 @@ export default function FuelManagementPage() {
     return <div className="rounded-lg bg-white p-6 text-red-700 shadow">{error ?? 'Sin datos disponibles.'}</div>;
   }
 
-  const { kpis } = dashboard;
+  const dashboardData = dashboard as FuelDashboardApi;
+  const { kpis } = dashboardData;
 
   return (
     <div className="flex min-h-full flex-col gap-4 text-slate-900">
@@ -121,15 +125,15 @@ export default function FuelManagementPage() {
           </div>
           <div className="grid grid-cols-3 gap-2 text-center text-sm">
             <div className="rounded-lg bg-slate-100 px-3 py-2">
-              <p className="font-bold">{dashboard.tanks.length}</p>
+              <p className="font-bold">{dashboardData.tanks.length}</p>
               <p className="text-slate-500">Tanques</p>
             </div>
             <div className="rounded-lg bg-slate-100 px-3 py-2">
-              <p className="font-bold">{dashboard.dispensers.length}</p>
+              <p className="font-bold">{dashboardData.dispensers.length}</p>
               <p className="text-slate-500">Surtidores</p>
             </div>
             <div className="rounded-lg bg-slate-100 px-3 py-2">
-              <p className="font-bold">{dashboard.recentTransactions.length}</p>
+              <p className="font-bold">{dashboardData.recentTransactions.length}</p>
               <p className="text-slate-500">Despachos</p>
             </div>
           </div>
@@ -212,7 +216,7 @@ export default function FuelManagementPage() {
                 </tr>
               </thead>
               <tbody>
-                {dashboard.tanks.map((tank) => (
+                {dashboardData.tanks.map((tank) => (
                   <tr key={tank.id} className="border-b border-slate-100">
                     <td className="px-3 py-2 font-semibold">{tank.code}</td>
                     <td className="px-3 py-2">{tank.location}</td>
@@ -250,7 +254,7 @@ export default function FuelManagementPage() {
                 </tr>
               </thead>
               <tbody>
-                {dashboard.recentTransactions.map((transaction) => (
+                {dashboardData.recentTransactions.map((transaction) => (
                   <tr key={transaction.id} className="border-b border-slate-100">
                     <td className="px-3 py-2 font-semibold">{transaction.transactionCode}</td>
                     <td className="px-3 py-2">{transaction.vehiclePlate ?? transaction.vehicleId}</td>

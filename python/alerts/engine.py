@@ -68,7 +68,13 @@ def evaluate_vehicle_telemetry_alerts(
         company_id=vehicle.assignedCompanyId,
         scope="vehicle",
         entity_id=vehicle.id,
-        metrics={"vehicle_fuel_level", "vehicle_fuel_drop", "vehicle_temperature", "fuel_drop_percent"},
+        metrics={
+            "vehicle_fuel_level",
+            "vehicle_fuel_drop",
+            "vehicle_fuel_drop_percent",
+            "vehicle_temperature",
+            "fuel_drop_percent",
+        },
     )
     values = {
         "vehicle_fuel_level": telemetry.fuelLevel,
@@ -93,7 +99,7 @@ def evaluate_vehicle_telemetry_alerts(
                     notification_email=threshold.notificationEmail,
                 )
 
-        if threshold.metric in {"vehicle_fuel_drop", "fuel_drop_percent"} and threshold.variationLimit is not None:
+        if threshold.metric in {"vehicle_fuel_drop", "vehicle_fuel_drop_percent", "fuel_drop_percent"} and threshold.variationLimit is not None:
             previous_level = previous_telemetry.fuelLevel if previous_telemetry else None
             if previous_level is None or telemetry.fuelLevel is None:
                 continue
@@ -152,10 +158,11 @@ def evaluate_tank_telemetry_alerts(
         company_id=tank.assignedCompanyId,
         scope="tank",
         entity_id=tank.id,
-        metrics={"tank_level", "tank_temperature", "tank_density", "tank_variation"},
+        metrics={"tank_level", "tank_level_percent", "tank_temperature", "tank_density", "tank_variation"},
     )
     values = {
         "tank_level": telemetry.levelPercent,
+        "tank_level_percent": telemetry.levelPercent,
         "tank_temperature": telemetry.temperature,
         "tank_density": telemetry.density,
     }

@@ -2,6 +2,7 @@
 
 import { useBusContext } from '@/hooks/client/provider';
 import { TransactionHistoryTable } from '@/components/fuel/transactionHistoryTable';
+import { closeAlertEventService } from '@/services/fuel/service';
 import {
   formatRelativeHour,
   getFuelDelta,
@@ -23,6 +24,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { useState } from 'react';
 
 function MetricCard({
   title,
@@ -52,7 +54,8 @@ function MetricCard({
 }
 
 export default function ClientDashboardPage() {
-  const { buses, busSelected, dataSource } = useBusContext();
+  const { buses, busSelected, dataSource, refreshFleet } = useBusContext();
+  const [closingAlertId, setClosingAlertId] = useState<number | null>(null);
   const bus = busSelected;
 
   if (!bus) {
@@ -99,9 +102,34 @@ export default function ClientDashboardPage() {
 
   const severityStyles: Record<string, string> = {
     CRITICAL: 'border-rose-400/30 bg-rose-500/10 text-rose-100',
+    HIGH: 'border-rose-400/30 bg-rose-500/10 text-rose-100',
     WARNING: 'border-amber-400/30 bg-amber-500/10 text-amber-100',
     INFO: 'border-cyan-400/30 bg-cyan-500/10 text-cyan-100',
   };
+  const visibleEvents = bus.events.length > 0
+    ? bus.events
+    : bus.status === 'Alerta'
+      ? [
+          {
+            id: -1,
+            type: 'Alerta activa',
+            severity: 'HIGH' as const,
+            time: formatRelativeHour(bus.telemetry.updatedAt),
+            detail: 'La unidad tiene una alerta abierta pendiente de revisión.',
+            location: bus.location.label || bus.plate,
+          },
+        ]
+      : [];
+
+  async function handleCloseAlert(alertId: number) {
+    setClosingAlertId(alertId);
+    try {
+      await closeAlertEventService(alertId);
+      await refreshFleet(false);
+    } finally {
+      setClosingAlertId(null);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -216,10 +244,10 @@ export default function ClientDashboardPage() {
                 <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Eventos</p>
                 <h3 className="mt-1 text-xl font-semibold text-white">Incidentes recientes</h3>
               </div>
-              <span className="text-xs text-slate-400">{bus.events.length} registros</span>
+              <span className="text-xs text-slate-400">{visibleEvents.length} registros</span>
             </div>
             <div className="space-y-3">
-              {bus.events.map((event) => (
+              {visibleEvents.map((event) => (
                 <div key={event.id} className={`rounded-[24px] border px-4 py-3 ${severityStyles[event.severity]}`}>
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-semibold">{event.type}</p>
@@ -230,6 +258,17 @@ export default function ClientDashboardPage() {
                     <span>{event.location}</span>
                     <span>{event.time}</span>
                   </div>
+                  {event.id > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleCloseAlert(event.id)}
+                      disabled={closingAlertId === event.id}
+                      className="mt-3 inline-flex items-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <i className="bx bx-check-circle" />
+                      {closingAlertId === event.id ? 'Cerrando...' : 'Cerrar alerta'}
+                    </button>
+                  ) : null}
                 </div>
               ))}
             </div>

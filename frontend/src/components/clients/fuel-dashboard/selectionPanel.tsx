@@ -7,9 +7,11 @@ type SelectionPanelProps = {
   dispensers: DispenserApi[];
   selectedTank?: TankApi | null;
   selectedDispenser?: DispenserApi | null;
+  canEditTanks?: boolean;
   onViewModeChange: (viewMode: 'tanks' | 'dispensers') => void;
   onTankSelect: (tankId: number) => void;
   onDispenserSelect: (dispenserId: number) => void;
+  onTankConfigure?: (tank: TankApi) => void;
 };
 
 export function SelectionPanel({
@@ -18,9 +20,11 @@ export function SelectionPanel({
   dispensers,
   selectedTank,
   selectedDispenser,
+  canEditTanks = false,
   onViewModeChange,
   onTankSelect,
   onDispenserSelect,
+  onTankConfigure,
 }: SelectionPanelProps) {
   return (
     <aside className="rounded-[30px] border border-white/10 bg-white/6 p-4 backdrop-blur-sm">
@@ -65,28 +69,44 @@ export function SelectionPanel({
               const selected = selectedTank?.id === tank.id;
 
               return (
-                <button
+                <div
                   key={tank.id}
-                  type="button"
-                  onClick={() => onTankSelect(tank.id)}
                   className={[
                     'w-full rounded-[24px] border p-4 text-left transition',
                     selected ? 'border-emerald-300/35 bg-white/12' : 'border-white/10 bg-white/5 hover:bg-white/8',
                   ].join(' ')}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-white">{tank.code}</p>
-                      <p className="mt-1 text-sm text-slate-400">{tank.location}</p>
+                  <button
+                    type="button"
+                    onClick={() => onTankSelect(tank.id)}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-white">{tank.code}</p>
+                        <p className="mt-1 text-sm text-slate-400">{tank.name}</p>
+                        <p className="mt-1 text-xs text-slate-500">{tank.location}</p>
+                      </div>
+                      <span className="rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-100">
+                        {tank.fillPercent.toFixed(1)}%
+                      </span>
                     </div>
-                    <span className="rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-100">
-                      {tank.fillPercent.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.min(100, Math.max(0, tank.fillPercent))}%` }} />
-                  </div>
-                </button>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.min(100, Math.max(0, tank.fillPercent))}%` }} />
+                    </div>
+                  </button>
+
+                  {canEditTanks && onTankConfigure ? (
+                    <button
+                      type="button"
+                      onClick={() => onTankConfigure(tank)}
+                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-300/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-300/16"
+                    >
+                      <i className="bx bx-cog" />
+                      Configurar tanque
+                    </button>
+                  ) : null}
+                </div>
               );
             })
           : dispensers.map((dispenser) => {

@@ -2,17 +2,66 @@
 
 import { useBusContext } from '@/hooks/client/provider';
 import { formatRelativeHour, getBusTone, getFuelDelta, getLatestDiesel } from '@/hooks/client/vehicleUi';
-import { useDeferredValue, useMemo, useState } from 'react';
+import { getApiErrorMessage } from '@/services/api/client';
+import {
+  getVehicleDetailService,
+  updateVehicleService,
+  VehicleDetailApi,
+  VehicleUpdatePayload,
+} from '@/services/vehicles/service';
+import { BusItem } from '@/types/buses';
+import { ChangeEvent, FormEvent, MouseEvent, useDeferredValue, useMemo, useState } from 'react';
 
 type NavClientProps = {
   navOpen: boolean;
   onClose: () => void;
+  canConfigureVehicles?: boolean;
 };
 
-export default function NavClient({ navOpen, onClose }: NavClientProps) {
-  const { buses, busSelected, setBusSelected, loading, dataSource, loadDemoFleet } = useBusContext();
+type VehicleConfigForm = {
+  brand: string;
+  model: string;
+  plate: string;
+  sensorIdentifier: string;
+  tankCapacity: string;
+  fuelConsumption: string;
+  targetRefillGallons: string;
+  status: string;
+};
+
+function vehicleToForm(vehicle: VehicleDetailApi | BusItem): VehicleConfigForm {
+  return {
+    brand: vehicle.brand ?? '',
+    model: vehicle.model ?? '',
+    plate: vehicle.plate,
+    sensorIdentifier: vehicle.sensorIdentifier ?? '',
+    tankCapacity: vehicle.tankCapacity ?? '',
+    fuelConsumption: vehicle.fuelConsumption ?? '',
+    targetRefillGallons: vehicle.targetRefillGallons?.toString() ?? '',
+    status: 'rawStatus' in vehicle ? vehicle.rawStatus ?? 'active' : vehicle.status ?? 'active',
+  };
+}
+
+function optionalString(value: string) {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function optionalNumber(value: string) {
+  const trimmed = value.trim();
+  return trimmed ? Number(trimmed) : null;
+}
+
+export default function NavClient({ navOpen, onClose, canConfigureVehicles = false }: NavClientProps) {
+  const { buses, busSelected, setBusSelected, loading, dataSource, loadDemoFleet, refreshFleet } = useBusContext();
   const [query, setQuery] = useState('');
+  const [configVehicle, setConfigVehicle] = useState<BusItem | null>(null);
+  const [configForm, setConfigForm] = useState<VehicleConfigForm | null>(null);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [configMessage, setConfigMessage] = useState<string | null>(null);
   const deferredQuery = useDeferredValue(query);
+  const showVehicleConfig = canConfigureVehicles && dataSource === 'database';
 
   const filteredBuses = useMemo(() => {
     const value = deferredQuery.trim().toLowerCase();
@@ -23,6 +72,67 @@ export default function NavClient({ navOpen, onClose }: NavClientProps) {
       return [bus.name, bus.plate, bus.route, bus.driver].some((item) => item.toLowerCase().includes(value));
     });
   }, [buses, deferredQuery]);
+
+  const closeConfig = () => {
+    setConfigVehicle(null);
+    setConfigForm(null);
+    setConfigError(null);
+    setConfigMessage(null);
+  };
+
+  const openConfig = async (event: MouseEvent<HTMLButtonElement>, bus: BusItem) => {
+    event.stopPropagation();
+    setConfigVehicle(bus);
+    setConfigForm(vehicleToForm(bus));
+    setConfigError(null);
+    setConfigMessage(null);
+
+    try {
+      const detail = await getVehicleDetailService(bus.id);
+      setConfigForm(vehicleToForm(detail));
+    } catch (error) {
+      setConfigError(getApiErrorMessage(error, 'No se pudieron cargar los datos del vehiculo.'));
+    }
+  };
+
+  const handleConfigChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = event.target;
+    setConfigForm((current) => (current ? { ...current, [name]: value } : current));
+  };
+
+  const saveConfig = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!configVehicle || !configForm) return;
+
+    setSavingConfig(true);
+    setConfigError(null);
+    setConfigMessage(null);
+
+    try {
+      const payload: VehicleUpdatePayload = {
+        brand: configForm.brand.trim(),
+        model: configForm.model.trim(),
+        plate: configForm.plate.trim(),
+        sensorIdentifier: optionalString(configForm.sensorIdentifier),
+        tankCapacity: optionalString(configForm.tankCapacity),
+        fuelConsumption: optionalString(configForm.fuelConsumption),
+        targetRefillGallons: optionalNumber(configForm.targetRefillGallons),
+        status: configForm.status,
+      };
+
+      if (!payload.brand || !payload.model || !payload.plate) {
+        throw new Error('Marca, modelo y placa son obligatorios.');
+      }
+
+      await updateVehicleService(configVehicle.id, payload);
+      await refreshFleet();
+      setConfigMessage('Vehiculo actualizado correctamente.');
+    } catch (error) {
+      setConfigError(getApiErrorMessage(error, 'No se pudo actualizar el vehiculo.'));
+    } finally {
+      setSavingConfig(false);
+    }
+  };
 
   return (
     <>
@@ -92,15 +202,22 @@ export default function NavClient({ navOpen, onClose }: NavClientProps) {
               const delta = getFuelDelta(bus);
 
               return (
-                <button
+                <div
                   key={bus.id}
-                  type="button"
                   onClick={() => {
                     setBusSelected(bus);
                     onClose();
                   }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      setBusSelected(bus);
+                      onClose();
+                    }
+                  }}
                   className={[
-                    'group w-full rounded-[26px] border p-4 text-left transition',
+                    'group w-full cursor-pointer rounded-[26px] border p-4 text-left transition',
                     isSelected
                       ? 'border-cyan-300/30 bg-white/12 shadow-lg shadow-cyan-950/20'
                       : 'border-white/10 bg-white/5 hover:bg-white/8',
@@ -111,9 +228,22 @@ export default function NavClient({ navOpen, onClose }: NavClientProps) {
                       <p className="text-base font-semibold text-white">{bus.name}</p>
                       <p className="text-sm text-slate-400">{bus.route}</p>
                     </div>
-                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${tone.badge}`}>
-                      {bus.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${tone.badge}`}>
+                        {bus.status}
+                      </span>
+                      {showVehicleConfig ? (
+                        <button
+                          type="button"
+                          onClick={(event) => void openConfig(event, bus)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/8 text-lg text-slate-200 transition hover:border-cyan-300/40 hover:bg-cyan-300/12 hover:text-cyan-100"
+                          title="Configurar vehiculo"
+                          aria-label={`Configurar ${bus.name}`}
+                        >
+                          <i className="bx bx-cog" />
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="mt-4 flex items-center gap-3">
@@ -144,12 +274,97 @@ export default function NavClient({ navOpen, onClose }: NavClientProps) {
                       <p className="mt-1 font-semibold text-white">{formatRelativeHour(bus.telemetry.updatedAt)}</p>
                     </div>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
         </div>
       </aside>
+
+      {configVehicle && configForm ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-3 backdrop-blur-sm md:items-center">
+          <form
+            onSubmit={saveConfig}
+            className="w-full max-w-2xl rounded-[28px] border border-white/12 bg-slate-950 p-5 text-white shadow-2xl shadow-black/50"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-cyan-200/70">Configuracion</p>
+                <h3 className="mt-1 text-2xl font-semibold">{configVehicle.name}</h3>
+                <p className="mt-1 text-sm text-slate-400">{configVehicle.plate}</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeConfig}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-xl text-slate-200 transition hover:bg-white/10"
+                aria-label="Cerrar configuracion"
+              >
+                <i className="bx bx-x" />
+              </button>
+            </div>
+
+            <div className="grid max-h-[65vh] gap-4 overflow-y-auto pr-1 md:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-200">
+                Nombre / marca
+                <input name="brand" value={configForm.brand} onChange={handleConfigChange} className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 outline-none focus:border-cyan-300/50" />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-200">
+                Numero / modelo
+                <input name="model" value={configForm.model} onChange={handleConfigChange} className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 outline-none focus:border-cyan-300/50" />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-200">
+                Placa
+                <input name="plate" value={configForm.plate} onChange={handleConfigChange} className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 outline-none focus:border-cyan-300/50" />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-200">
+                Dispositivo sensor
+                <input name="sensorIdentifier" value={configForm.sensorIdentifier} onChange={handleConfigChange} placeholder="sensor-001" className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 outline-none focus:border-cyan-300/50" />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-200">
+                Galones disponibles a echar
+                <input name="targetRefillGallons" type="number" min="0" step="0.01" value={configForm.targetRefillGallons} onChange={handleConfigChange} className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 outline-none focus:border-cyan-300/50" />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-200">
+                Capacidad del tanque
+                <input name="tankCapacity" value={configForm.tankCapacity} onChange={handleConfigChange} placeholder="90 gal" className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 outline-none focus:border-cyan-300/50" />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-200">
+                Consumo
+                <input name="fuelConsumption" value={configForm.fuelConsumption} onChange={handleConfigChange} placeholder="8.5 gal/km" className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 outline-none focus:border-cyan-300/50" />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-200">
+                Estado
+                <select name="status" value={configForm.status} onChange={handleConfigChange} className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 outline-none focus:border-cyan-300/50">
+                  <option value="active">En ruta</option>
+                  <option value="maintenance">Mantenimiento</option>
+                  <option value="offline">Fuera de linea</option>
+                  <option value="alert">Alerta</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                disabled={savingConfig}
+                className="inline-flex items-center gap-2 rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:bg-slate-500"
+              >
+                <i className="bx bx-save" />
+                {savingConfig ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+              <button
+                type="button"
+                onClick={closeConfig}
+                className="rounded-2xl border border-white/10 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/8"
+              >
+                Cancelar
+              </button>
+              {configMessage ? <span className="text-sm font-semibold text-emerald-200">{configMessage}</span> : null}
+              {configError ? <span className="text-sm font-semibold text-rose-200">{configError}</span> : null}
+            </div>
+          </form>
+        </div>
+      ) : null}
     </>
   );
 }

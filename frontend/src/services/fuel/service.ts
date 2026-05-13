@@ -110,6 +110,24 @@ export type AlertThresholdApi = {
   createdAt: string;
 };
 
+export type AlertEventApi = {
+  id: number;
+  vehicleId?: number | null;
+  entityType: string;
+  entityId?: number | null;
+  assignedCompanyId?: number | null;
+  sensorIdentifier?: string | null;
+  alertType: string;
+  severity: string;
+  title: string;
+  message: string;
+  status: string;
+  metadata?: Record<string, unknown> | null;
+  recordedAt: string;
+  createdAt: string;
+  resolvedAt?: string | null;
+};
+
 export type AlertThresholdPayload = {
   scope: string;
   entityId?: number | null;
@@ -507,6 +525,18 @@ export const replayOfflineSensorEventsService = async (payload: OfflineReplayPay
 
 export const getAlertThresholdsService = async () => {
   const response = await apiClient.get<AlertThresholdApi[]>('/fuel/thresholds');
+  return response.data;
+};
+
+export const getAlertEventsService = async (limit = 100) => {
+  const response = await apiClient.get<AlertEventApi[]>('/alerts/', {
+    params: { limit },
+  });
+  return response.data;
+};
+
+export const closeAlertEventService = async (alertId: number) => {
+  const response = await apiClient.patch<AlertEventApi>(`/alerts/${alertId}/close`);
   return response.data;
 };
 

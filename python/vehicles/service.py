@@ -6,6 +6,7 @@ from alerts.engine import evaluate_vehicle_telemetry_alerts
 from auth.security import AuthContext
 from companies.repository import get_company_by_id
 from companies.models import Company
+from realtime import publish_realtime_event
 from vehicles.consumption import get_previous_vehicle_telemetry, validate_vehicle_consumption
 from vehicles.repository import (
     create_vehicle,
@@ -211,6 +212,17 @@ def create_vehicle_telemetry_service(
         previous_telemetry=previous_telemetry,
     )
     db.commit()
+    publish_realtime_event(
+        {
+            "type": "vehicle.telemetry.updated",
+            "vehicleId": vehicle.id,
+            "companyId": vehicle.assignedCompanyId,
+            "fuelLevel": vehicle.lastFuelLevel,
+            "volume": vehicle.lastVolume,
+            "fuelValidationStatus": telemetry.fuelValidationStatus,
+        },
+        vehicle.assignedCompanyId,
+    )
     db.refresh(vehicle)
 
     return VehicleTelemetryRead.model_validate(telemetry)

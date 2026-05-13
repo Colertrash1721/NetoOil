@@ -1,6 +1,11 @@
 'use client';
 
 import { BusItem } from '@/types/buses';
+import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
+import {
+  AlertEventApi,
+  getAlertEventsService,
+} from '@/services/fuel/service';
 import {
   getVehicleDetailService,
   getVehiclesService,
@@ -22,7 +27,7 @@ type BusContextType = {
   loading: boolean;
   dataSource: 'database' | 'demo';
   loadDemoFleet: () => void;
-  refreshFleet: () => Promise<void>;
+  refreshFleet: (showLoading?: boolean) => Promise<void>;
 };
 
 const BusContext = createContext<BusContextType | undefined>(undefined);
@@ -36,6 +41,50 @@ function mapStatus(status?: string | null): BusItem['status'] {
     return 'En terminal';
   }
   return 'En ruta';
+}
+
+function isOpenAlert(alert: AlertEventApi) {
+  const status = alert.status.toLowerCase();
+  return !alert.resolvedAt && !['closed', 'resolved', 'dismissed'].includes(status);
+}
+
+function mapAlertSeverity(severity: string): BusItem['events'][number]['severity'] {
+  const value = severity.toUpperCase();
+  if (value === 'CRITICAL') return 'CRITICAL';
+  if (value === 'HIGH') return 'HIGH';
+  if (value === 'INFO') return 'INFO';
+  return 'WARNING';
+}
+
+function mapAlertEvent(alert: AlertEventApi, detail: VehicleDetailApi): BusItem['events'][number] {
+  const alertTime = alert.recordedAt || alert.createdAt;
+
+  return {
+    id: alert.id,
+    type: alert.title || alert.alertType,
+    severity: mapAlertSeverity(alert.severity),
+    time: new Date(alertTime).toLocaleTimeString('es-DO', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+    detail: alert.message,
+    location: detail.assignedCompanyName ?? detail.plate,
+  };
+}
+
+function busHasAlert(bus: BusItem) {
+  return bus.status === 'Alerta' || bus.events.length > 0;
+}
+
+function sortFleetByAlert(left: BusItem, right: BusItem) {
+  const leftHasAlert = busHasAlert(left);
+  const rightHasAlert = busHasAlert(right);
+
+  if (leftHasAlert !== rightHasAlert) {
+    return leftHasAlert ? -1 : 1;
+  }
+
+  return left.name.localeCompare(right.name, 'es');
 }
 
 function createBackendSeries(detail: VehicleDetailApi) {
@@ -63,17 +112,31 @@ function createBackendSeries(detail: VehicleDetailApi) {
   };
 }
 
-function mapBackendVehicle(detail: VehicleDetailApi): BusItem {
+function mapBackendVehicle(detail: VehicleDetailApi, alerts: AlertEventApi[] = []): BusItem {
   const series = createBackendSeries(detail);
+  const vehicleAlerts = alerts
+    .filter((alert) => (
+      alert.vehicleId === detail.id
+      || (alert.entityType.toLowerCase() === 'vehicle' && alert.entityId === detail.id)
+    ))
+    .filter(isOpenAlert)
+    .map((alert) => mapAlertEvent(alert, detail));
+  const status = vehicleAlerts.length > 0 ? 'Alerta' : mapStatus(detail.status);
 
   return {
     id: detail.id,
     name: `${detail.brand} ${detail.model}`.trim() || `Unidad ${detail.plate}`,
+    brand: detail.brand,
+    model: detail.model,
     engine: `${detail.brand} ${detail.model}`.trim() || 'Sin motor registrado',
     plate: detail.plate,
     route: detail.assignedCompanyName ?? 'Sin ruta registrada',
     driver: 'Sin chofer registrado',
-    status: mapStatus(detail.status),
+    status,
+    rawStatus: detail.status,
+    sensorIdentifier: detail.sensorIdentifier,
+    tankCapacity: detail.tankCapacity,
+    fuelConsumption: detail.fuelConsumption,
     targetRefillGallons: detail.targetRefillGallons,
     location: {
       lat: detail.lastLatitude ?? 18.4861,
@@ -92,12 +155,15 @@ function mapBackendVehicle(detail: VehicleDetailApi): BusItem {
       speed: detail.lastSpeed ?? 0,
       updatedAt: detail.lastUpdate ?? detail.creationDate,
     },
-    events: [],
+    events: vehicleAlerts,
   };
 }
 
 async function buildFleetFromDatabase() {
-  const vehicles = await getVehiclesService();
+  const [vehicles, alerts] = await Promise.all([
+    getVehiclesService(),
+    getAlertEventsService(200).catch(() => []),
+  ]);
   if (vehicles.length === 0) {
     return [];
   }
@@ -108,7 +174,8 @@ async function buildFleetFromDatabase() {
 
   return details
     .filter((detail): detail is VehicleDetailApi => detail !== null)
-    .map((detail) => mapBackendVehicle(detail));
+    .map((detail) => mapBackendVehicle(detail, alerts))
+    .sort(sortFleetByAlert);
 }
 
 function buildDemoFleet(): BusItem[] {
@@ -125,15 +192,33 @@ function buildDemoFleet(): BusItem[] {
       number: Math.max(8, baseFuel - (7 - pointIndex) * 1.8 + (unit % 4)),
       timestamp: new Date(now - (7 - pointIndex) * 45 * 60 * 1000).toISOString(),
     }));
+    const events: BusItem['events'] = status === 'Alerta'
+      ? [
+          {
+            id: unit,
+            type: 'Variacion brusca de combustible',
+            severity: 'WARNING',
+            time: 'Hace pocos minutos',
+            detail: 'Lectura demo generada para validar el panel de monitoreo.',
+            location: routes[unit % routes.length],
+          },
+        ]
+      : [];
 
     return {
       id: 10000 + unit,
       name: `${brands[unit % brands.length]} ${models[unit % models.length]}`,
+      brand: brands[unit % brands.length],
+      model: models[unit % models.length],
       engine: `Diesel ${2.4 + (unit % 5) * 0.3}L`,
       plate: `NF-${unit.toString().padStart(3, '0')}`,
       route: routes[unit % routes.length],
       driver: `Chofer Demo ${unit.toString().padStart(2, '0')}`,
       status,
+      rawStatus: status,
+      sensorIdentifier: `demo-sensor-${unit.toString().padStart(3, '0')}`,
+      tankCapacity: `${90 + (unit % 6) * 15}`,
+      fuelConsumption: `${8 + (unit % 5) * 0.4}`,
       targetRefillGallons: 18 + (unit % 12),
       location: {
         lat: 18.4861 + (unit % 12) * 0.012,
@@ -155,20 +240,9 @@ function buildDemoFleet(): BusItem[] {
         speed: status === 'En terminal' ? 0 : 22 + (unit % 62),
         updatedAt: new Date(now - unit * 3 * 60 * 1000).toISOString(),
       },
-      events: status === 'Alerta'
-        ? [
-            {
-              id: unit,
-              type: 'Variacion brusca de combustible',
-              severity: 'WARNING',
-              time: 'Hace pocos minutos',
-              detail: 'Lectura demo generada para validar el panel de monitoreo.',
-              location: routes[unit % routes.length],
-            },
-          ]
-        : [],
+      events,
     };
-  });
+  }).sort(sortFleetByAlert);
 }
 
 export const useBusContext = () => {
@@ -185,8 +259,10 @@ export const BusProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [dataSource, setDataSource] = useState<'database' | 'demo'>('database');
 
-  const refreshFleet = async () => {
-    setLoading(true);
+  const refreshFleet = async (showLoading = true) => {
+    if (showLoading) {
+      setLoading(true);
+    }
 
     try {
       const databaseFleet = await buildFleetFromDatabase();
@@ -209,7 +285,9 @@ export const BusProvider = ({ children }: { children: ReactNode }) => {
       setBuses([]);
       setBusSelected(null);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -224,6 +302,10 @@ export const BusProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     void refreshFleet();
   }, []);
+
+  useRealtimeRefresh(['fuel.simulation.updated', 'vehicle.telemetry.updated', 'alert.created', 'alert.resolved'], () => {
+    void refreshFleet(false);
+  });
 
   const handleSetBusSelected = (value: BusItem | null) => {
     startTransition(() => {

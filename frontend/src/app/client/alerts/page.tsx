@@ -1,9 +1,13 @@
 'use client';
 
 import { getApiErrorMessage } from '@/services/api/client';
+import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import {
+  AlertEventApi,
   AlertThresholdApi,
+  closeAlertEventService,
   createAlertThresholdService,
+  getAlertEventsService,
   getAlertThresholdsService,
   updateAlertThresholdService,
 } from '@/services/fuel/service';
@@ -82,10 +86,12 @@ function toNumber(value: string) {
 }
 
 export default function ClientAlertsPage() {
+  const [events, setEvents] = useState<AlertEventApi[]>([]);
   const [thresholds, setThresholds] = useState<AlertThresholdApi[]>([]);
   const [form, setForm] = useState<AlertFormState>(() => emptyState());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [closingAlertId, setClosingAlertId] = useState<number | null>(null);
   const [canEdit, setCanEdit] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -117,10 +123,23 @@ export default function ClientAlertsPage() {
     }
   }
 
+  async function loadAlertEvents() {
+    try {
+      setEvents(await getAlertEventsService(100));
+    } catch {
+      setEvents([]);
+    }
+  }
+
   useEffect(() => {
     setCanEdit(localStorage.getItem('rol') === 'admin');
     void loadThresholds();
+    void loadAlertEvents();
   }, []);
+
+  useRealtimeRefresh(['alert.created', 'alert.resolved', 'fuel.simulation.updated', 'vehicle.telemetry.updated'], () => {
+    void loadAlertEvents();
+  });
 
   const thresholdByMetric = useMemo(() => {
     return new Map(thresholds.map((threshold) => [threshold.metric, threshold]));
@@ -167,10 +186,27 @@ export default function ClientAlertsPage() {
       }
       setSuccessMessage('Configuración de alertas guardada.');
       await loadThresholds();
+      await loadAlertEvents();
     } catch (error) {
       setErrorMessage(getApiErrorMessage(error, 'No se pudo guardar la configuración de alertas.'));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleCloseAlert(alertId: number) {
+    setClosingAlertId(alertId);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      await closeAlertEventService(alertId);
+      setSuccessMessage('Alerta cerrada correctamente.');
+      await loadAlertEvents();
+    } catch (error) {
+      setErrorMessage(getApiErrorMessage(error, 'No se pudo cerrar la alerta.'));
+    } finally {
+      setClosingAlertId(null);
     }
   }
 
@@ -202,6 +238,75 @@ export default function ClientAlertsPage() {
 
       {errorMessage ? <div className="rounded-2xl border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{errorMessage}</div> : null}
       {successMessage ? <div className="rounded-2xl border border-emerald-300/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{successMessage}</div> : null}
+
+      <section className="rounded-[30px] border border-white/10 bg-white/6 p-5 text-white backdrop-blur-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Eventos</p>
+            <h3 className="mt-2 text-2xl font-semibold">Alertas recientes</h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadAlertEvents()}
+            className="inline-flex items-center gap-2 rounded-2xl border border-white/10 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/8"
+          >
+            <i className="bx bx-refresh" />
+            Actualizar
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3">
+          {events.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/35 px-4 py-4 text-sm text-slate-300">
+              No hay alertas registradas para esta vista.
+            </div>
+          ) : (
+            events.map((event) => {
+              const isOpen = event.status.toLowerCase() === 'open';
+              const isClosing = closingAlertId === event.id;
+
+              return (
+              <article key={event.id} className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-cyan-400/10 px-2.5 py-1 text-xs font-semibold text-cyan-100">
+                        {event.entityType} #{event.entityId ?? event.vehicleId ?? '-'}
+                      </span>
+                      <span className="rounded-full bg-rose-400/10 px-2.5 py-1 text-xs font-semibold text-rose-100">
+                        {event.severity}
+                      </span>
+                      <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold text-slate-200">
+                        {event.status}
+                      </span>
+                    </div>
+                    <h4 className="mt-2 text-base font-semibold">{event.title}</h4>
+                    <p className="mt-1 text-sm text-slate-300">{event.message}</p>
+                  </div>
+                  <div className="text-left text-xs text-slate-400 md:text-right">
+                    <p>{event.alertType}</p>
+                    <p className="mt-1">{new Date(event.recordedAt).toLocaleString('es-DO')}</p>
+                    {isOpen ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleCloseAlert(event.id)}
+                        disabled={isClosing}
+                        className="mt-3 inline-flex items-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <i className="bx bx-check-circle" />
+                        {isClosing ? 'Cerrando...' : 'Cerrar alerta'}
+                      </button>
+                    ) : event.resolvedAt ? (
+                      <p className="mt-2 text-emerald-200">Cerrada {new Date(event.resolvedAt).toLocaleString('es-DO')}</p>
+                    ) : null}
+                  </div>
+                </div>
+              </article>
+              );
+            })
+          )}
+        </div>
+      </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
         {ALERT_CONFIGS.map((config) => {

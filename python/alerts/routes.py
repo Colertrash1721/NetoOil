@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from alerts.schemas import AlertRead
-from alerts.service import read_alerts_service, read_notification_logs_service
+from alerts.service import close_alert_service, read_alerts_service, read_notification_logs_service
 from auth.dependencies import get_current_auth
 from auth.security import AuthContext
 from db.database import get_db
@@ -19,6 +19,15 @@ def get_alerts(
     db: Session = Depends(get_db),
 ):
     return read_alerts_service(db, auth, vehicle_id=vehicleId, limit=limit)
+
+
+@router.patch("/{alert_id}/close", response_model=AlertRead)
+def close_alert(
+    alert_id: int,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+):
+    return close_alert_service(db, auth, alert_id=alert_id)
 
 
 @router.get("/notifications", response_model=list[dict])

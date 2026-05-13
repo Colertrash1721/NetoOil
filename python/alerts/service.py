@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+from fastapi import HTTPException
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -222,6 +223,60 @@ def close_open_alerts(db: Session, *, vehicle_id: int, alert_type: str, resolved
     for alert in alerts:
         alert.status = "resolved"
         alert.resolvedAt = resolved_at
+
+
+def close_alert_service(
+    db: Session,
+    auth: AuthContext,
+    *,
+    alert_id: int,
+) -> AlertRead:
+    from vehicles.models import Vehicle
+
+    alert = db.get(AlertEvent, alert_id)
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alerta no encontrada.")
+
+    if auth.role in {"company", "admin", "user"} and auth.company_id is not None:
+        vehicle = db.get(Vehicle, alert.vehicleId) if alert.vehicleId else None
+        belongs_to_company = (
+            alert.assignedCompanyId == auth.company_id
+            or (vehicle is not None and vehicle.assignedCompanyId == auth.company_id)
+        )
+        if not belongs_to_company:
+            raise HTTPException(status_code=403, detail="No tienes acceso a esta alerta.")
+
+    if alert.status == "open":
+        alert.status = "resolved"
+        alert.resolvedAt = datetime.utcnow()
+        db.add(alert)
+        db.commit()
+        db.refresh(alert)
+
+        publish_realtime_event(
+            {
+                "type": "alert.resolved",
+                "alert": {
+                    "id": alert.id,
+                    "vehicleId": alert.vehicleId,
+                    "entityType": alert.entityType,
+                    "entityId": alert.entityId,
+                    "assignedCompanyId": alert.assignedCompanyId,
+                    "alertType": alert.alertType,
+                    "severity": alert.severity,
+                    "title": alert.title,
+                    "message": alert.message,
+                    "status": alert.status,
+                    "metadata": alert.eventMetadata,
+                    "recordedAt": alert.recordedAt,
+                    "createdAt": alert.createdAt,
+                    "resolvedAt": alert.resolvedAt,
+                },
+            },
+            alert.assignedCompanyId,
+        )
+
+    return AlertRead.model_validate(alert)
 
 
 def read_alerts_service(

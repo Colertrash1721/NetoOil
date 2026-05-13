@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from vehicles.models import Vehicle, VehicleTelemetry
 
 EARTH_RADIUS_KM = 6371.0
+GALLON_TO_LITER = 3.785411784
 MIN_DISTANCE_KM = 0.05
 MOVING_SPEED_THRESHOLD_KMH = 3.0
 DEFAULT_TOLERANCE_PERCENT = 0.35
@@ -92,29 +93,30 @@ def validate_vehicle_consumption(
             validated_at=validated_at,
         )
 
+    actual_fuel_used = compute_actual_fuel_used(
+        previous_telemetry=previous_telemetry,
+        current_fuel_level=current_fuel_level,
+        current_volume=current_volume,
+    )
+
     moving = is_vehicle_moving(
         movement=movement,
         current_speed=current_speed,
         previous_speed=previous_telemetry.speed,
         distance_km=distance_km,
     )
-    if not moving:
+    if not moving and (actual_fuel_used is None or actual_fuel_used <= DEFAULT_TOLERANCE_ABSOLUTE_GAL):
         return ConsumptionValidationResult(
             distance_km=distance_km,
             expected_fuel_used=0.0,
-            actual_fuel_used=0.0,
-            fuel_delta=0.0,
+            actual_fuel_used=round(actual_fuel_used or 0.0, 4),
+            fuel_delta=round(actual_fuel_used or 0.0, 4),
             status="stationary",
             message="El vehiculo no muestra movimiento suficiente para validar consumo.",
             validated_at=validated_at,
         )
 
-    expected_fuel_used = round(distance_km * gallons_per_km, 4)
-    actual_fuel_used = compute_actual_fuel_used(
-        previous_telemetry=previous_telemetry,
-        current_fuel_level=current_fuel_level,
-        current_volume=current_volume,
-    )
+    expected_fuel_used = round(distance_km * gallons_per_km, 4) if moving else 0.0
     if actual_fuel_used is None:
         return ConsumptionValidationResult(
             distance_km=distance_km,
@@ -179,6 +181,12 @@ def parse_gallons_per_kilometer(raw_value: str | None) -> float | None:
         return 1 / numeric_value
     if "gal/km" in normalized or "galkm" in normalized:
         return numeric_value
+    if "l/100km" in normalized or "lt/100km" in normalized or "liter/100km" in normalized or "litro/100km" in normalized:
+        return numeric_value / 100 / GALLON_TO_LITER
+    if "l/km" in normalized or "lt/km" in normalized or "liter/km" in normalized or "litro/km" in normalized:
+        return numeric_value / GALLON_TO_LITER
+    if "km/l" in normalized or "km/lt" in normalized or "km/liter" in normalized or "km/litro" in normalized:
+        return 1 / (numeric_value * GALLON_TO_LITER)
     if "/" not in normalized:
         return numeric_value
     return None
@@ -231,7 +239,7 @@ def compute_actual_fuel_used(
     current_volume: float | None,
 ) -> float | None:
     if current_volume is not None and previous_telemetry.volume is not None:
-        return previous_telemetry.volume - current_volume
+        return (previous_telemetry.volume - current_volume) / GALLON_TO_LITER
     if current_fuel_level is not None and previous_telemetry.fuelLevel is not None:
         return previous_telemetry.fuelLevel - current_fuel_level
     return None
