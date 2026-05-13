@@ -29,6 +29,7 @@ def _env_flag(name: str, default: bool) -> bool:
 
 class MqttIngestService:
     def __init__(self) -> None:
+        self.enabled = _env_flag("MQTT_ENABLED", False)
         self.host = os.getenv("MQTT_HOST", "netotrack.com")
         self.port = int(os.getenv("MQTT_PORT", "8883"))
         self.topic = os.getenv("MQTT_TOPIC", "netofuel/#")
@@ -46,6 +47,10 @@ class MqttIngestService:
         self._client: mqtt.Client | None = None
 
     def start(self) -> None:
+        if not self.enabled:
+            logger.info("MQTT ingest disabled. Set MQTT_ENABLED=true to enable it.")
+            return
+
         if self._client is not None:
             return
 

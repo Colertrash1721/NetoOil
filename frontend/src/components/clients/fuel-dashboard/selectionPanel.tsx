@@ -63,7 +63,7 @@ export function SelectionPanel({
         </button>
       </div>
 
-      <div className="max-h-[560px] space-y-3 overflow-y-auto pr-1">
+      <div className="max-h-full space-y-3 overflow-y-auto pr-1">
         {viewMode === 'tanks'
           ? tanks.map((tank) => {
               const selected = selectedTank?.id === tank.id;

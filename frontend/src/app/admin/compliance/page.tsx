@@ -63,7 +63,7 @@ export default function CompliancePage() {
     try {
       await createCustomRoleService({
         name: roleName,
-        description: 'Rol custom demo para restricción por módulo.',
+        description: 'Rol custom para restricción por módulo.',
         assignedCompanyId: null,
         permissions: permissions.split(',').map((item) => item.trim()).filter(Boolean),
         status: 'active',
@@ -80,7 +80,7 @@ export default function CompliancePage() {
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-700">D/E</p>
         <h1 className="mt-2 text-3xl font-semibold text-slate-950">Alarmas, seguridad, reportes y KPIs</h1>
         <p className="mt-2 max-w-3xl text-sm text-slate-600">
-          Evidencia demo para alarmas configurables, notificaciones, auditoría, RBAC, seguridad, forecasting y exportación.
+          Evidencia operativa para alarmas configurables, notificaciones, auditoría, RBAC, seguridad, forecasting y exportación.
         </p>
       </section>
 
@@ -90,7 +90,7 @@ export default function CompliancePage() {
       <section className="grid gap-5 xl:grid-cols-2">
         <article className="rounded-lg bg-white p-5 shadow-sm">
           <h2 className="text-xl font-semibold">Alarmas y notificaciones</h2>
-          <p className="mt-1 text-sm text-slate-600">Canales soportados: interna, email, SMS demo y webhook demo. Se registra envío y recepción.</p>
+          <p className="mt-1 text-sm text-slate-600">Canales soportados: interna, email, SMS y webhook. Se registra envío y recepción.</p>
           <div className="mt-4 max-h-72 overflow-auto">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="bg-slate-100 text-xs uppercase text-slate-600">
@@ -130,7 +130,7 @@ export default function CompliancePage() {
           <form className="mt-4 grid gap-3" onSubmit={handleCreateRole}>
             <input className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" value={roleName} onChange={(event) => setRoleName(event.target.value)} />
             <input className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" value={permissions} onChange={(event) => setPermissions(event.target.value)} />
-            <button className="rounded-lg bg-cyan-700 px-4 py-3 text-sm font-semibold text-white">Crear rol demo</button>
+            <button className="rounded-lg bg-cyan-700 px-4 py-3 text-sm font-semibold text-white">Crear rol</button>
           </form>
           <div className="mt-4 space-y-2">
             {roles.map((role) => (

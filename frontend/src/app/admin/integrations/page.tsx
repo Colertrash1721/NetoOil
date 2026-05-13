@@ -23,7 +23,7 @@ export default function IntegrationsPage() {
   const [operations, setOperations] = useState<Record<string, unknown> | null>(null);
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [webhooks, setWebhooks] = useState<WebhookEndpointApi[]>([]);
-  const [name, setName] = useState('ERP Demo');
+  const [name, setName] = useState('ERP NetoFuel');
   const [url, setUrl] = useState('https://example.local/webhooks/netofuel');
   const [testResult, setTestResult] = useState<Record<string, unknown> | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -71,7 +71,7 @@ export default function IntegrationsPage() {
       const result = await testWebhookService({
         webhookId: created.id,
         eventType: 'alert.created',
-        payload: { demo: true, severity: 'high', message: 'Evento crítico simulado' },
+        payload: { severity: 'high', message: 'Evento crítico simulado' },
       });
       setTestResult(result);
       await load();
@@ -86,7 +86,7 @@ export default function IntegrationsPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-700">F/G</p>
         <h1 className="mt-2 text-3xl font-semibold text-slate-950">Integraciones, APIs y operaciones</h1>
         <p className="mt-2 max-w-3xl text-sm text-slate-600">
-          Evidencia demo para OpenAPI, webhooks, AD/LDAP, ERP, arquitectura, backup, HA y health checks.
+          Evidencia operativa para OpenAPI, webhooks, AD/LDAP, ERP, arquitectura, backup, HA y health checks.
         </p>
       </section>
 

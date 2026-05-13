@@ -276,34 +276,6 @@ class FuelSimulationResult(BaseModel):
     alertIds: list[int] = Field(default_factory=list)
 
 
-class WirelessSensorDemoRequest(BaseModel):
-    sensorIdentifier: str
-    vehicleId: int | None = None
-    batteryLevel: float | None = Field(default=None, ge=0, le=100)
-    tamperDetected: bool = False
-    remoteConfig: dict | None = None
-
-
-class OfflineReplayEvent(BaseModel):
-    sensorIdentifier: str
-    vehicleId: int | None = None
-    sequence: int
-    originalTimestamp: datetime
-    batteryLevel: float | None = Field(default=None, ge=0, le=100)
-    payload: dict | None = None
-
-
-class OfflineReplayRequest(BaseModel):
-    events: list[OfflineReplayEvent]
-
-
-class DeviceDemoResult(BaseModel):
-    status: str
-    processed: int = 0
-    alertIds: list[int] = Field(default_factory=list)
-    messages: list[str] = Field(default_factory=list)
-
-
 class CustomRoleCreate(BaseModel):
     name: str
     description: str | None = None

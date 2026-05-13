@@ -22,7 +22,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         { name: 'Combustible', path: '/admin/fuel', icon: 'bx-gas-pump' },
         { name: 'Analytics', path: '/admin/analytics', icon: 'bx-bar-chart-alt-2' },
         { name: 'Trazabilidad', path: '/admin/traceability', icon: 'bx-git-branch' },
-        { name: 'Dispositivos Demo', path: '/admin/device-demo', icon: 'bx-chip' },
         { name: 'Cumplimiento', path: '/admin/compliance', icon: 'bx-shield-quarter' },
         { name: 'Integraciones', path: '/admin/integrations', icon: 'bx-plug' },
         ...(currentRole === 'superadmin'
@@ -146,7 +145,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                                         API REST
                                     </span>
                                     <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-                                        Demo cargada
+                                        Datos reales
                                     </span>
                                 </div>
                             </div>

@@ -384,7 +384,7 @@ def build_consumption_forecast(
             "lookbackDays": lookback_days,
             "forecastDays": forecast_days,
             "confidencePercent": confidence_percent,
-            "seasonality": "not applied in demo",
+            "seasonality": "not applied",
         },
         "dailyAverage": round(average, 4),
         "monthlyForecast": round(forecast, 4),

@@ -231,47 +231,6 @@ export type FuelSimulationResultApi = {
   alertIds: number[];
 };
 
-export type DeviceDemoStatusApi = {
-  sensors: Array<{
-    id: number;
-    identifier: string;
-    sensorType: string;
-    pairedVehicleId?: number | null;
-    pairingStatus: string;
-    batteryLevel?: number | null;
-    remoteConfig?: Record<string, unknown> | null;
-    tamperStatus: string;
-    cachedEvents: number;
-    lastSeenAt: string;
-  }>;
-};
-
-export type WirelessSensorDemoPayload = {
-  sensorIdentifier: string;
-  vehicleId?: number | null;
-  batteryLevel?: number | null;
-  tamperDetected?: boolean;
-  remoteConfig?: Record<string, unknown> | null;
-};
-
-export type OfflineReplayPayload = {
-  events: Array<{
-    sensorIdentifier: string;
-    vehicleId?: number | null;
-    sequence: number;
-    originalTimestamp: string;
-    batteryLevel?: number | null;
-    payload?: Record<string, unknown> | null;
-  }>;
-};
-
-export type DeviceDemoResultApi = {
-  status: string;
-  processed: number;
-  alertIds: number[];
-  messages: string[];
-};
-
 export type FuelDashboardApi = {
   kpis: FuelKpisApi;
   tanks: TankApi[];
@@ -505,21 +464,6 @@ export const getFuelTransactionsService = async (filters: FuelTransactionFilters
 
 export const simulateFuelDeviceService = async (payload: FuelSimulationPayload) => {
   const response = await apiClient.post<FuelSimulationResultApi>('/fuel/simulation', payload);
-  return response.data;
-};
-
-export const getDeviceDemoStatusService = async () => {
-  const response = await apiClient.get<DeviceDemoStatusApi>('/fuel/device-demo/status');
-  return response.data;
-};
-
-export const simulateWirelessSensorEventService = async (payload: WirelessSensorDemoPayload) => {
-  const response = await apiClient.post<DeviceDemoResultApi>('/fuel/device-demo/wireless-event', payload);
-  return response.data;
-};
-
-export const replayOfflineSensorEventsService = async (payload: OfflineReplayPayload) => {
-  const response = await apiClient.post<DeviceDemoResultApi>('/fuel/device-demo/offline-replay', payload);
   return response.data;
 };
 

@@ -13,7 +13,6 @@ import { getApiErrorMessage } from '@/services/api/client';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { DispenserDetail } from './dispenserDetail';
-import { buildDemoDispensers, buildDemoTanks } from './demoData';
 import { downloadExcelFile, transactionRows } from './export';
 import { volume } from './format';
 import { DispenserTotalizerChart, FuelDistributionChart, TankCapacityChart } from './charts';
@@ -106,8 +105,8 @@ export function ClientFuelDashboard({ canEditTanks = false }: { canEditTanks?: b
   });
 
   const kpis = dashboard?.kpis;
-  const tanks = dashboard?.tanks?.length ? dashboard.tanks : buildDemoTanks();
-  const dispensers = dashboard?.dispensers?.length ? dashboard.dispensers : buildDemoDispensers();
+  const tanks = useMemo(() => dashboard?.tanks ?? [], [dashboard?.tanks]);
+  const dispensers = useMemo(() => dashboard?.dispensers ?? [], [dashboard?.dispensers]);
   const selectedTank = tanks.find((tank) => tank.id === selectedTankId) ?? tanks[0] ?? null;
   const selectedDispenser = dispensers.find((dispenser) => dispenser.id === selectedDispenserId) ?? dispensers[0] ?? null;
   const totalTankCapacity = kpis?.totalTankCapacity ?? tanks.reduce((sum, tank) => sum + tank.capacity, 0);

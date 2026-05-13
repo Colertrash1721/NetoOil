@@ -53,7 +53,7 @@ function optionalNumber(value: string) {
 }
 
 export default function NavClient({ navOpen, onClose, canConfigureVehicles = false }: NavClientProps) {
-  const { buses, busSelected, setBusSelected, loading, dataSource, loadDemoFleet, refreshFleet } = useBusContext();
+  const { buses, busSelected, setBusSelected, loading, refreshFleet } = useBusContext();
   const [query, setQuery] = useState('');
   const [configVehicle, setConfigVehicle] = useState<BusItem | null>(null);
   const [configForm, setConfigForm] = useState<VehicleConfigForm | null>(null);
@@ -61,7 +61,7 @@ export default function NavClient({ navOpen, onClose, canConfigureVehicles = fal
   const [configError, setConfigError] = useState<string | null>(null);
   const [configMessage, setConfigMessage] = useState<string | null>(null);
   const deferredQuery = useDeferredValue(query);
-  const showVehicleConfig = canConfigureVehicles && dataSource === 'database';
+  const showVehicleConfig = canConfigureVehicles;
 
   const filteredBuses = useMemo(() => {
     const value = deferredQuery.trim().toLowerCase();
@@ -142,11 +142,11 @@ export default function NavClient({ navOpen, onClose, canConfigureVehicles = fal
       />
       <aside
         className={[
-          'fixed inset-y-0 left-0 z-40 w-[88vw] max-w-[340px] border-r border-white/10 bg-[#071521]/95 p-4 shadow-2xl backdrop-blur-xl transition duration-300 lg:static lg:w-auto lg:max-w-none lg:translate-x-0 lg:rounded-[28px] lg:border lg:bg-white/5',
+          'fixed inset-y-0 left-0 z-40 w-[88vw] max-w-[340px] overflow-hidden border-r border-white/10 bg-[#071521]/95 p-4 shadow-2xl backdrop-blur-xl transition duration-300 lg:sticky lg:top-6 lg:h-[calc(100dvh-3rem)] lg:w-auto lg:max-w-none lg:translate-x-0 lg:rounded-[28px] lg:border lg:bg-white/5',
           navOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
         ].join(' ')}
       >
-        <div className="flex h-full flex-col gap-4">
+        <div className="flex h-full min-h-0 flex-col gap-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[11px] uppercase tracking-[0.35em] text-cyan-200/60">Fleet</p>
@@ -173,23 +173,13 @@ export default function NavClient({ navOpen, onClose, canConfigureVehicles = fal
             </div>
             <div className="mt-3 flex items-center justify-between text-xs text-slate-300">
               <span>{loading ? 'Sincronizando...' : `${filteredBuses.length} unidades visibles`}</span>
-              <button
-                type="button"
-                onClick={loadDemoFleet}
-                className={[
-                  'rounded-full border px-2.5 py-1 font-semibold transition',
-                  dataSource === 'demo'
-                    ? 'border-cyan-300/40 bg-cyan-400/15 text-cyan-100'
-                    : 'border-white/10 bg-white/5 text-slate-300 hover:border-cyan-300/30 hover:text-cyan-100',
-                ].join(' ')}
-                title="Cargar 50 vehículos demo"
-              >
-                {dataSource === 'demo' ? 'demo activa' : 'base de datos'}
-              </button>
+              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 font-semibold text-slate-300">
+                base de datos
+              </span>
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1">
             {!loading && filteredBuses.length === 0 && (
               <div className="rounded-[26px] border border-dashed border-white/10 bg-white/5 p-4 text-sm text-slate-300">
                 No hay vehiculos registrados en la base de datos.

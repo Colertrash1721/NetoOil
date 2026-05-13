@@ -6,8 +6,6 @@ NetoFuel es una plataforma web de control integral de combustible para flotas e 
 recepcion -> almacenamiento -> despacho -> consumo -> conciliacion
 ```
 
-El proyecto conserva datos demo para pruebas funcionales: 50 vehiculos, 10 tanques y 10 dispensadores asociados a la empresa de demostracion.
-
 ## Stack
 
 - Frontend: Next.js, React, TypeScript, Tailwind CSS, Leaflet, Recharts.
@@ -235,6 +233,7 @@ AUTH_COOKIE_SECURE=false
 AUTH_COOKIE_SAMESITE=lax
 
 MQTT_HOST=netotrack.com
+MQTT_ENABLED=false
 MQTT_PORT=8883
 MQTT_TOPIC=netofuel/#
 MQTT_CLIENT_ID=netooil-python-ingest
@@ -324,16 +323,12 @@ El proxy Nginx enruta:
 - `/api/` hacia FastAPI.
 - WebSocket hacia el backend.
 
-## Datos Demo
+## Datos Iniciales
 
-Al iniciar el backend se crean datos de prueba si no existen:
+Al iniciar el backend se crean las cuentas base si no existen:
 
-- Empresa demo: `usuario`.
+- Empresa inicial: `usuario`.
 - Usuario root inicial: `admin`.
-- 50 vehiculos demo.
-- 10 tanques demo.
-- 10 dispensadores demo.
-- Telemetria base, alertas y datos operativos suficientes para probar dashboards.
 
 El usuario root inicial usa credenciales simples de desarrollo y debe cambiarse antes de produccion.
 
@@ -350,7 +345,7 @@ El usuario root inicial usa credenciales simples de desarrollo y debe cambiarse 
 
 ## Seguridad y Produccion
 
-- Cambiar credenciales demo antes de publicar.
+- Cambiar credenciales iniciales antes de publicar.
 - Usar una `SECRET_KEY` fuerte.
 - Mantener `.env` fuera de Git.
 - Activar cookies seguras detras de HTTPS.
@@ -384,7 +379,6 @@ Implementado o parcialmente implementado:
 - MQTT, WebSocket y motor de alertas.
 - Alertas configurables y correo SMTP.
 - Reportes historicos, PDF basico y KPIs avanzados.
-- Demo amplia con vehiculos, tanques y dispensadores.
 - Docker Compose con Nginx.
 
 Pendiente para una implantacion formal:

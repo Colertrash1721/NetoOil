@@ -11,7 +11,6 @@ from alerts.engine import evaluate_tank_telemetry_alerts, evaluate_transaction_a
 from alerts.models import AlertEvent
 from auth.security import AuthContext
 from realtime import publish_realtime_event
-from sensor_data.models import SensorDevice, SensorDeviceTelemetry
 from vehicles.consumption import validate_vehicle_consumption
 from vehicles.models import Vehicle, VehicleTelemetry
 from fuel_management.models import (
@@ -38,7 +37,6 @@ from fuel_management.schemas import (
     CustomRoleRead,
     DeviceActionLogCreate,
     DeviceActionLogRead,
-    DeviceDemoResult,
     DispenserCreate,
     DispenserRead,
     DispenserUpdate,
@@ -53,7 +51,6 @@ from fuel_management.schemas import (
     FuelReceiptRead,
     FuelSimulationRequest,
     FuelSimulationResult,
-    OfflineReplayRequest,
     RefuelingTransactionCreate,
     RefuelingTransactionRead,
     TankCreate,
@@ -62,7 +59,6 @@ from fuel_management.schemas import (
     TankTelemetryCreate,
     TankTelemetryRead,
     TankUpdate,
-    WirelessSensorDemoRequest,
     WebhookEndpointCreate,
     WebhookEndpointRead,
     WebhookTestRequest,
@@ -191,6 +187,116 @@ def log_audit(
             ipAddress=ip_address,
         )
     )
+
+
+def create_device_action(
+    db: Session,
+    data: DeviceActionLogCreate,
+    auth: AuthContext,
+) -> DeviceActionLogRead:
+    item = DeviceActionLog(**data.model_dump())
+    db.add(item)
+    db.flush()
+    log_audit(
+        db,
+        auth,
+        "device_action.create",
+        "device_action",
+        item.id,
+        data.model_dump(),
+    )
+    db.commit()
+    db.refresh(item)
+    return DeviceActionLogRead.model_validate(item)
+
+
+def list_custom_roles(db: Session, auth: AuthContext) -> list[CustomRoleRead]:
+    query = _company_filter(db.query(CustomRole), CustomRole, auth)
+    return [
+        CustomRoleRead.model_validate(item)
+        for item in query.order_by(CustomRole.createdAt.desc()).all()
+    ]
+
+
+def create_custom_role(db: Session, data: CustomRoleCreate, auth: AuthContext) -> CustomRoleRead:
+    _ensure_company_access(auth, data.assignedCompanyId)
+    existing = (
+        db.query(CustomRole)
+        .filter(
+            CustomRole.name == data.name,
+            CustomRole.assignedCompanyId == data.assignedCompanyId,
+        )
+        .first()
+    )
+    if existing:
+        raise ValueError("Custom role with this name already exists.")
+
+    item = CustomRole(**data.model_dump())
+    db.add(item)
+    db.flush()
+    log_audit(db, auth, "custom_role.create", "custom_role", item.id, data.model_dump())
+    db.commit()
+    db.refresh(item)
+    return CustomRoleRead.model_validate(item)
+
+
+def list_thresholds(db: Session, auth: AuthContext) -> list[AlertThresholdRead]:
+    query = _company_filter(db.query(AlertThreshold), AlertThreshold, auth)
+    return [
+        AlertThresholdRead.model_validate(item)
+        for item in query.order_by(AlertThreshold.createdAt.desc()).all()
+    ]
+
+
+def create_threshold(db: Session, data: AlertThresholdCreate, auth: AuthContext) -> AlertThresholdRead:
+    _ensure_company_access(auth, data.assignedCompanyId)
+    item = AlertThreshold(**data.model_dump())
+    db.add(item)
+    db.flush()
+    log_audit(db, auth, "threshold.create", "alert_threshold", item.id, data.model_dump())
+    db.commit()
+    db.refresh(item)
+    return AlertThresholdRead.model_validate(item)
+
+
+def update_threshold(
+    db: Session,
+    threshold_id: int,
+    data: AlertThresholdUpdate,
+    auth: AuthContext,
+) -> AlertThresholdRead:
+    item = db.get(AlertThreshold, threshold_id)
+    if not item:
+        raise ValueError("Alert threshold not found.")
+    _ensure_company_access(auth, item.assignedCompanyId)
+    update_data = data.model_dump(exclude_unset=True)
+    if "assignedCompanyId" in update_data:
+        _ensure_company_access(auth, update_data["assignedCompanyId"])
+    for key, value in update_data.items():
+        setattr(item, key, value)
+    log_audit(db, auth, "threshold.update", "alert_threshold", item.id, update_data)
+    db.commit()
+    db.refresh(item)
+    return AlertThresholdRead.model_validate(item)
+
+
+def list_audit_logs(db: Session, auth: AuthContext, limit: int = 100) -> list[AuditLogRead]:
+    query = db.query(AuditLog).order_by(AuditLog.createdAt.desc()).limit(limit)
+    return [AuditLogRead.model_validate(item) for item in query.all()]
+
+
+def export_audit_logs(db: Session, auth: AuthContext, limit: int = 1000) -> dict:
+    records = []
+    for item in db.query(AuditLog).order_by(AuditLog.createdAt.desc()).limit(limit).all():
+        payload = AuditLogRead.model_validate(item).model_dump()
+        digest = hashlib.sha256(json.dumps(payload, default=str, sort_keys=True).encode("utf-8")).hexdigest()
+        records.append({**payload, "sha256": digest})
+
+    return {
+        "generatedAt": datetime.utcnow().isoformat(),
+        "retentionPolicy": "5 years minimum",
+        "records": records,
+    }
 
 
 def _tank_read(tank: InstitutionalTank) -> TankRead:
@@ -969,241 +1075,6 @@ def simulate_fuel_device(
     )
 
 
-def simulate_wireless_sensor_event(
-    db: Session,
-    data: WirelessSensorDemoRequest,
-    auth: AuthContext,
-) -> DeviceDemoResult:
-    sensor = db.query(SensorDevice).filter(SensorDevice.identifier == data.sensorIdentifier).first()
-    if not sensor:
-        sensor = SensorDevice(
-            identifier=data.sensorIdentifier,
-            topic=f"demo/ble/{data.sensorIdentifier}",
-            sensorType="ble",
-            pairedVehicleId=data.vehicleId,
-            pairingStatus="paired" if data.vehicleId else "unpaired",
-        )
-        db.add(sensor)
-        db.flush()
-    sensor.pairedVehicleId = data.vehicleId
-    sensor.pairingStatus = "paired" if data.vehicleId else "unpaired"
-    sensor.batteryLevel = data.batteryLevel
-    sensor.remoteConfig = data.remoteConfig
-    sensor.tamperStatus = "tamper" if data.tamperDetected else "normal"
-    sensor.lastSeenAt = datetime.utcnow()
-    db.add(
-        SensorDeviceTelemetry(
-            deviceId=sensor.id,
-            topic=sensor.topic,
-            eventId=9001 if data.tamperDetected else 100,
-            bleBattery1=data.batteryLevel,
-            rawReported={"remoteConfig": data.remoteConfig, "tamperDetected": data.tamperDetected},
-            receivedAt=datetime.utcnow(),
-            recordedAt=datetime.utcnow(),
-        )
-    )
-    alert_ids: list[int] = []
-    if data.tamperDetected:
-        vehicle = db.get(Vehicle, data.vehicleId) if data.vehicleId else None
-        alert = _simulation_alert(
-            db,
-            entity_type="sensor",
-            entity_id=sensor.id,
-            company_id=vehicle.assignedCompanyId if vehicle else None,
-            sensor_identifier=sensor.identifier,
-            alert_type="wireless_sensor_tamper",
-            severity="high",
-            title="Manipulacion de sensor inalambrico",
-            message="Evento demo de manipulacion o robo detectado por sensor BLE.",
-            metadata={"vehicleId": data.vehicleId, "batteryLevel": data.batteryLevel},
-        )
-        alert_ids.append(alert.id)
-    log_audit(db, auth, "sensor.demo_event", "sensor", sensor.id, data.model_dump())
-    db.commit()
-    return DeviceDemoResult(status="processed", processed=1, alertIds=alert_ids)
-
-
-def replay_offline_sensor_events(
-    db: Session,
-    data: OfflineReplayRequest,
-    auth: AuthContext,
-) -> DeviceDemoResult:
-    ordered = sorted(data.events, key=lambda item: (item.originalTimestamp, item.sequence))
-    messages: list[str] = []
-    for event in ordered:
-        sensor = db.query(SensorDevice).filter(SensorDevice.identifier == event.sensorIdentifier).first()
-        if not sensor:
-            sensor = SensorDevice(
-                identifier=event.sensorIdentifier,
-                topic=f"demo/offline/{event.sensorIdentifier}",
-                sensorType="ble",
-                pairedVehicleId=event.vehicleId,
-                pairingStatus="paired" if event.vehicleId else "unpaired",
-            )
-            db.add(sensor)
-            db.flush()
-        sensor.cachedEvents = max((sensor.cachedEvents or 0) - 1, 0)
-        sensor.batteryLevel = event.batteryLevel
-        sensor.lastSeenAt = datetime.utcnow()
-        db.add(
-            SensorDeviceTelemetry(
-                deviceId=sensor.id,
-                topic=sensor.topic,
-                eventId=event.sequence,
-                bleBattery1=event.batteryLevel,
-                rawReported={"offlineReplay": True, "payload": event.payload, "sequence": event.sequence},
-                receivedAt=datetime.utcnow(),
-                recordedAt=event.originalTimestamp,
-            )
-        )
-        messages.append(f"Evento {event.sequence} reenviado con timestamp original {event.originalTimestamp.isoformat()}.")
-    log_audit(db, auth, "sensor.offline_replay", "sensor", None, {"events": len(ordered)})
-    db.commit()
-    return DeviceDemoResult(status="replayed", processed=len(ordered), messages=messages)
-
-
-def get_device_demo_status(db: Session, auth: AuthContext) -> dict:
-    sensors = db.query(SensorDevice).order_by(SensorDevice.lastSeenAt.desc()).limit(100).all()
-    return {
-        "sensors": [
-            {
-                "id": item.id,
-                "identifier": item.identifier,
-                "sensorType": item.sensorType,
-                "pairedVehicleId": item.pairedVehicleId,
-                "pairingStatus": item.pairingStatus,
-                "batteryLevel": item.batteryLevel,
-                "remoteConfig": item.remoteConfig,
-                "tamperStatus": item.tamperStatus,
-                "cachedEvents": item.cachedEvents,
-                "lastSeenAt": item.lastSeenAt,
-            }
-            for item in sensors
-        ]
-    }
-
-
-def create_threshold(
-    db: Session, data: AlertThresholdCreate, auth: AuthContext
-) -> AlertThresholdRead:
-    if auth.role in {"company", "admin", "user"} and auth.company_id is not None:
-        data.assignedCompanyId = auth.company_id
-    _ensure_company_access(auth, data.assignedCompanyId)
-    item = AlertThreshold(**data.model_dump())
-    db.add(item)
-    db.flush()
-    log_audit(db, auth, "threshold.create", "alert_threshold", item.id, data.model_dump())
-    db.commit()
-    db.refresh(item)
-    return AlertThresholdRead.model_validate(item)
-
-
-def update_threshold(
-    db: Session, threshold_id: int, data: AlertThresholdUpdate, auth: AuthContext
-) -> AlertThresholdRead:
-    threshold = db.get(AlertThreshold, threshold_id)
-    if not threshold:
-        raise ValueError("Threshold not found.")
-    _ensure_company_access(auth, threshold.assignedCompanyId)
-    update_data = data.model_dump(exclude_unset=True)
-    if auth.role in {"company", "admin", "user"} and auth.company_id is not None:
-        update_data["assignedCompanyId"] = auth.company_id
-    if "assignedCompanyId" in update_data:
-        _ensure_company_access(auth, update_data["assignedCompanyId"])
-    for key, value in update_data.items():
-        setattr(threshold, key, value)
-    log_audit(db, auth, "threshold.update", "alert_threshold", threshold.id, update_data)
-    db.commit()
-    db.refresh(threshold)
-    return AlertThresholdRead.model_validate(threshold)
-
-
-def list_thresholds(db: Session, auth: AuthContext) -> list[AlertThresholdRead]:
-    query = db.query(AlertThreshold).order_by(AlertThreshold.createdAt.desc())
-    if auth.role in {"company", "admin", "user"} and auth.company_id is not None:
-        query = query.filter(
-            (AlertThreshold.assignedCompanyId == auth.company_id)
-            | (AlertThreshold.assignedCompanyId.is_(None))
-        )
-    return [AlertThresholdRead.model_validate(item) for item in query.all()]
-
-
-def create_device_action(
-    db: Session, data: DeviceActionLogCreate, auth: AuthContext
-) -> DeviceActionLogRead:
-    item = DeviceActionLog(**data.model_dump())
-    db.add(item)
-    db.flush()
-    log_audit(db, auth, "device.action", "device_action", item.id, data.model_dump())
-    db.commit()
-    db.refresh(item)
-    return DeviceActionLogRead.model_validate(item)
-
-
-def list_audit_logs(db: Session, auth: AuthContext, limit: int = 100) -> list[AuditLogRead]:
-    query = db.query(AuditLog).order_by(AuditLog.createdAt.desc()).limit(limit)
-    return [AuditLogRead.model_validate(item) for item in query.all()]
-
-
-def _audit_hash(item: AuditLog) -> str:
-    payload = {
-        "id": item.id,
-        "actorRole": item.actorRole,
-        "actorId": item.actorId,
-        "action": item.action,
-        "entityType": item.entityType,
-        "entityId": item.entityId,
-        "details": item.details,
-        "createdAt": item.createdAt.isoformat() if item.createdAt else None,
-    }
-    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
-def export_audit_logs(db: Session, auth: AuthContext, limit: int = 1000) -> dict:
-    logs = db.query(AuditLog).order_by(AuditLog.createdAt.desc()).limit(limit).all()
-    records = [
-        {
-            "id": item.id,
-            "actorRole": item.actorRole,
-            "actorId": item.actorId,
-            "action": item.action,
-            "entityType": item.entityType,
-            "entityId": item.entityId,
-            "details": item.details,
-            "ipAddress": item.ipAddress,
-            "createdAt": item.createdAt,
-            "sha256": _audit_hash(item),
-        }
-        for item in logs
-    ]
-    return {
-        "generatedAt": datetime.utcnow(),
-        "retentionPolicy": "5 years minimum",
-        "records": records,
-    }
-
-
-def list_custom_roles(db: Session, auth: AuthContext) -> list[CustomRoleRead]:
-    query = db.query(CustomRole).order_by(CustomRole.createdAt.desc())
-    if auth.role in {"company", "admin", "user"} and auth.company_id is not None:
-        query = query.filter(
-            (CustomRole.assignedCompanyId == auth.company_id) | (CustomRole.assignedCompanyId.is_(None))
-        )
-    return [CustomRoleRead.model_validate(item) for item in query.all()]
-
-
-def create_custom_role(db: Session, data: CustomRoleCreate, auth: AuthContext) -> CustomRoleRead:
-    _ensure_company_access(auth, data.assignedCompanyId)
-    item = CustomRole(**data.model_dump())
-    db.add(item)
-    db.flush()
-    log_audit(db, auth, "rbac.role.create", "custom_role", item.id, data.model_dump())
-    db.commit()
-    db.refresh(item)
-    return CustomRoleRead.model_validate(item)
-
-
 def get_security_evidence() -> dict:
     return {
         "generatedAt": datetime.utcnow(),
@@ -1216,7 +1087,7 @@ def get_security_evidence() -> dict:
         "authentication": {
             "tokenAlgorithm": "HS256",
             "passwordHash": "PBKDF2-SHA256",
-            "mfa": "demo-ready / provider pending",
+            "mfa": "provider pending",
             "sso": "optional / provider pending",
         },
         "dataAtRest": {
@@ -1235,7 +1106,7 @@ def get_openapi_evidence() -> dict:
         "auth": {
             "bearerToken": "Authorization: Bearer <token>",
             "cookie": "jwt",
-            "oauth2": "provider-ready; current demo uses signed bearer token",
+            "oauth2": "provider-ready; current environment uses signed bearer token",
         },
         "coveredResources": ["tanks", "sensors", "transactions", "users", "alerts"],
         "sampleCalls": [
@@ -1266,7 +1137,7 @@ def test_webhook(db: Session, data: WebhookTestRequest, auth: AuthContext) -> di
     payload = data.payload or {
         "eventType": data.eventType,
         "timestamp": datetime.utcnow().isoformat(),
-        "source": "netofuel.demo",
+            "source": "netofuel",
     }
     attempts = max(webhook.retryCount, 1)
     log = WebhookDeliveryLog(
@@ -1275,7 +1146,7 @@ def test_webhook(db: Session, data: WebhookTestRequest, auth: AuthContext) -> di
         payload=payload,
         attempts=attempts,
         status="delivered",
-        response=f"demo delivery accepted by {webhook.url}",
+        response=f"test delivery accepted by {webhook.url}",
         deliveredAt=datetime.utcnow(),
     )
     db.add(log)
@@ -1289,7 +1160,7 @@ def get_integration_evidence(db: Session) -> dict:
     deliveries = db.query(WebhookDeliveryLog).order_by(WebhookDeliveryLog.deliveredAt.desc()).limit(20).all()
     return {
         "adLdap": {
-            "status": "demo-ready",
+            "status": "ready",
             "syncMode": "scheduled user sync",
             "fieldMap": {"sAMAccountName": "username", "mail": "email", "memberOf": "roles"},
             "testResult": "simulated authentication accepted",
@@ -1360,7 +1231,7 @@ def get_health_status(db: Session) -> dict:
         "services": {
             "api": {"status": "up", "latencyMs": latency_ms},
             "database": {"status": "up", "latencyMs": latency_ms},
-            "mqttIngest": {"status": "configured"},
+            "mqttIngest": {"status": "enabled" if os.getenv("MQTT_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"} else "disabled"},
             "realtime": {"status": "up"},
         },
         "metrics": {

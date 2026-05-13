@@ -15,7 +15,6 @@ from fuel_management.schemas import (
     CustomRoleRead,
     DeviceActionLogCreate,
     DeviceActionLogRead,
-    DeviceDemoResult,
     DispenserCreate,
     DispenserRead,
     DispenserUpdate,
@@ -29,7 +28,6 @@ from fuel_management.schemas import (
     FuelReceiptRead,
     FuelSimulationRequest,
     FuelSimulationResult,
-    OfflineReplayRequest,
     RefuelingTransactionCreate,
     RefuelingTransactionRead,
     TankCreate,
@@ -42,7 +40,6 @@ from fuel_management.schemas import (
     WebhookEndpointCreate,
     WebhookEndpointRead,
     WebhookTestRequest,
-    WirelessSensorDemoRequest,
 )
 from fuel_management.service import (
     add_tank_telemetry,
@@ -61,7 +58,6 @@ from fuel_management.service import (
     delete_tank,
     export_audit_logs,
     get_dashboard,
-    get_device_demo_status,
     get_health_status,
     get_integration_evidence,
     get_openapi_evidence,
@@ -81,8 +77,6 @@ from fuel_management.service import (
     list_webhooks,
     log_audit,
     simulate_fuel_device,
-    replay_offline_sensor_events,
-    simulate_wireless_sensor_event,
     test_webhook,
     update_dispenser,
     update_driver,
@@ -408,32 +402,6 @@ def post_simulation(
         raise _handle_error(error)
 
 
-@router.get("/device-demo/status", response_model=dict)
-def get_device_demo(
-    db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_roles("superadmin", "admin", "company")),
-):
-    return get_device_demo_status(db, auth)
-
-
-@router.post("/device-demo/wireless-event", response_model=DeviceDemoResult)
-def post_wireless_sensor_demo(
-    data: WirelessSensorDemoRequest,
-    db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_roles("superadmin", "admin", "company")),
-):
-    return simulate_wireless_sensor_event(db, data, auth)
-
-
-@router.post("/device-demo/offline-replay", response_model=DeviceDemoResult)
-def post_offline_replay_demo(
-    data: OfflineReplayRequest,
-    db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_roles("superadmin", "admin", "company")),
-):
-    return replay_offline_sensor_events(db, data, auth)
-
-
 @router.get("/thresholds", response_model=list[AlertThresholdRead])
 def get_thresholds(
     db: Session = Depends(get_db),
@@ -515,21 +483,21 @@ def post_custom_role(
 
 
 @router.get("/security/evidence", response_model=dict)
-def get_security_demo_evidence(
+def get_security_evidence_route(
     _: AuthContext = Depends(require_roles("superadmin", "admin", "company")),
 ):
     return get_security_evidence()
 
 
 @router.get("/integrations/openapi", response_model=dict)
-def get_openapi_demo_evidence(
+def get_openapi_evidence_route(
     _: AuthContext = Depends(get_current_auth),
 ):
     return get_openapi_evidence()
 
 
 @router.get("/integrations/evidence", response_model=dict)
-def get_integrations_demo_evidence(
+def get_integrations_evidence_route(
     db: Session = Depends(get_db),
     _: AuthContext = Depends(require_roles("superadmin", "admin", "company")),
 ):
@@ -566,7 +534,7 @@ def post_webhook_test(
 
 
 @router.get("/operations/evidence", response_model=dict)
-def get_operations_demo_evidence(
+def get_operations_evidence_route(
     db: Session = Depends(get_db),
     _: AuthContext = Depends(require_roles("superadmin", "admin", "company")),
 ):

@@ -124,7 +124,7 @@ export default function AdminTraceabilityPage() {
       <section className="rounded-lg bg-white p-4 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Demo</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Operación</p>
             <h2 className="text-xl font-semibold text-slate-950">Ejemplo de flujo de evento</h2>
           </div>
           {loading ? <span className="text-sm text-slate-500">Cargando...</span> : null}

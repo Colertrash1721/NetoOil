@@ -154,8 +154,8 @@ def _notify_alert_created(
                     channel=channel,
                     recipient=str(recipient_value),
                     status="sent",
-                    provider="demo",
-                    response="simulated delivery",
+                    provider="internal",
+                    response="delivery accepted",
                     sentAt=datetime.utcnow(),
                     receivedAt=datetime.utcnow(),
                 )

@@ -33,7 +33,7 @@ class NotificationDeliveryLog(Base):
     channel = Column(String(40), nullable=False, index=True)
     recipient = Column(String(255), nullable=True)
     status = Column(String(40), nullable=False, default="sent", index=True)
-    provider = Column(String(80), nullable=False, default="demo")
+    provider = Column(String(80), nullable=False, default="internal")
     response = Column(String(255), nullable=True)
     sentAt = Column(DateTime, nullable=False, default=datetime.datetime.utcnow, index=True)
     receivedAt = Column(DateTime, nullable=True)

@@ -54,7 +54,7 @@ function MetricCard({
 }
 
 export default function ClientDashboardPage() {
-  const { buses, busSelected, dataSource, refreshFleet } = useBusContext();
+  const { buses, busSelected, refreshFleet } = useBusContext();
   const [closingAlertId, setClosingAlertId] = useState<number | null>(null);
   const bus = busSelected;
 
@@ -146,7 +146,7 @@ export default function ClientDashboardPage() {
               <span className="rounded-full bg-white/15 px-4 py-2 text-sm font-medium text-white">{bus.plate}</span>
               <span className="rounded-full bg-white/15 px-4 py-2 text-sm font-medium text-white">Chofer: {bus.driver}</span>
               <span className="rounded-full bg-slate-950/25 px-4 py-2 text-sm font-medium text-white">
-                Fuente: {dataSource === 'demo' ? 'Demo' : 'Base de datos'}
+                Fuente: Base de datos
               </span>
             </div>
           </div>

@@ -137,62 +137,6 @@ function getOperationalPosition(
   return [lat, lng];
 }
 
-function buildFallbackTanks(): TankApi[] {
-  return Array.from({ length: 10 }, (_, index) => {
-    const unit = index + 1;
-    const capacity = 18000 + unit * 1500;
-    const fillPercent = 52 + (unit % 4) * 8;
-    return {
-      id: 9000 + unit,
-      code: `TNK-${unit.toString().padStart(2, '0')}`,
-      name: `Tanque Demo ${unit.toString().padStart(2, '0')}`,
-      location: `Patio operativo ${unit.toString().padStart(2, '0')}`,
-      fuelType: 'diesel',
-      storageType: unit % 2 === 0 ? 'soterrado' : 'aereo',
-      capacity,
-      currentVolume: Math.round(capacity * (fillPercent / 100)),
-      temperature: 27 + (unit % 5),
-      density: 0.82 + (unit % 3) * 0.01,
-      status: 'operational',
-      sensorIdentifier: `TANK-DEMO-${unit.toString().padStart(2, '0')}`,
-      assignedCompanyId: 1,
-      fillPercent,
-      availableCapacity: Math.round(capacity * (1 - fillPercent / 100)),
-      lastUpdate: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    };
-  });
-}
-
-function buildFallbackDispensers(): DispenserApi[] {
-  return Array.from({ length: 10 }, (_, index) => {
-    const unit = index + 1;
-    return {
-      id: 8000 + unit,
-      code: `DSP-${unit.toString().padStart(2, '0')}`,
-      name: `Dispensador Demo ${unit.toString().padStart(2, '0')}`,
-      location: `Isla ${unit.toString().padStart(2, '0')}`,
-      tankId: 9000 + unit,
-      tankCode: `TNK-${unit.toString().padStart(2, '0')}`,
-      totalizer: 25000 + unit * 875,
-      supportedIdentificationMethods: 'rfid,mifare,anpr,ble',
-      fallbackIdentificationMethod: 'anpr',
-      productConfigurations: [
-        { hoseNumber: 1, product: 'diesel' },
-        { hoseNumber: 2, product: 'gasolina' },
-        { hoseNumber: 3, product: 'diesel' },
-        { hoseNumber: 4, product: 'gasolina' },
-      ],
-      hoseCount: 4,
-      status: unit % 5 === 0 ? 'maintenance' : 'online',
-      deviceIdentifier: `DISP-DEMO-${unit.toString().padStart(2, '0')}`,
-      assignedCompanyId: 1,
-      lastTransactionAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    };
-  });
-}
-
 function ClusteredOperationalMarkers({ markers }: { markers: OperationalMarker[] }) {
   const map = useMap();
   const [mapVersion, setMapVersion] = useState(0);
@@ -298,7 +242,7 @@ function MapStat({ title, value, icon }: { title: string; value: string; icon: s
 }
 
 export default function ClientMapPage() {
-  const { buses, busSelected, dataSource } = useBusContext();
+  const { buses, busSelected } = useBusContext();
   const [tanks, setTanks] = useState<TankApi[]>([]);
   const [dispensers, setDispensers] = useState<DispenserApi[]>([]);
 
@@ -332,10 +276,7 @@ export default function ClientMapPage() {
       position: [bus.location.lat, bus.location.lng],
     }));
 
-    const visibleTanks = tanks.length > 0 ? tanks : dataSource === 'demo' ? buildFallbackTanks() : [];
-    const visibleDispensers = dispensers.length > 0 ? dispensers : dataSource === 'demo' ? buildFallbackDispensers() : [];
-
-    const tankMarkers = visibleTanks.map((tank, index): OperationalMarker => ({
+    const tankMarkers = tanks.map((tank, index): OperationalMarker => ({
       id: `tank-${tank.id}`,
       kind: 'tank',
       title: tank.code,
@@ -344,7 +285,7 @@ export default function ClientMapPage() {
       position: getOperationalPosition(index, 'tank', center),
     }));
 
-    const dispenserMarkers = visibleDispensers.map((dispenser, index): OperationalMarker => ({
+    const dispenserMarkers = dispensers.map((dispenser, index): OperationalMarker => ({
       id: `dispenser-${dispenser.id}`,
       kind: 'dispenser',
       title: dispenser.code,
@@ -354,7 +295,7 @@ export default function ClientMapPage() {
     }));
 
     return [...vehicleMarkers, ...tankMarkers, ...dispenserMarkers];
-  }, [buses, center, dataSource, dispensers, tanks]);
+  }, [buses, center, dispensers, tanks]);
 
   if (!activeBus) {
     return (
